@@ -1,32 +1,48 @@
 //#include "bq79600_reg_defs.h"
 //#include "bq79656_reg_defs.h"
-#include "bq_pin_defs.h"
-#include <stdbool.h>
 #include <Arduino.h>
 #include <SPI.h>
+#include <stdbool.h>
+
+#include "bq_pin_defs.h"
 
 #define BQ_SPI_FREQ 6000000
 #define BQ_UART_FREQ 1000000
-#define BQ_THERM_LSB 0.00015259  // Vlsb_gpio = 152.59uV/lsb
-#define BQ_CURR_LSB 0.0000000149 // 14.9 nv
+#define BQ_THERM_LSB 0.00015259   // Vlsb_gpio = 152.59uV/lsb
+#define BQ_CURR_LSB 0.0000000149  // 14.9 nv
 
 #define num_series 140
 #define num_thermo 112
-#define num_segments 14         // logical segments (BQ79656-Q1 chips)
-#define SHUNT_RESISTANCE 0.0001 // 100 uohm
+#define num_segments 14          // logical segments (BQ79656-Q1 chips)
+#define SHUNT_RESISTANCE 0.0001  // 100 uohm
 
 class BQ79656
 {
 public:
+    BQ79656(HardwareSerial uart, uint8_t tx_pin) : uart_(uart), tx_pin_(tx_pin) {}
+
+    void Initialize();
+
+    void AutoAddressing(byte numDevices);
+
+    void StartBalancingSimple();
+
+    void GetVoltages(float *voltages);
+    void GetTemps(float *temps);
+    void GetCurrent(float *current);
+
+#ifndef BQTEST
+private:
+#endif
     enum class RequestType : byte
     {
-        SINGLE_READ = 0b00000000,     // single device read
-        SINGLE_WRITE = 0b00010000,    // single device write
-        STACK_READ = 0b00100000,      // stack read
-        STACK_WRITE = 0b00110000,     // stack write
-        BROAD_READ = 0b01000000,      // broadcast read
-        BROAD_WRITE = 0b01010000,     // broadcast write
-        BROAD_WRITE_REV = 0b01100000, // broadcast write reverse
+        SINGLE_READ = 0b00000000,      // single device read
+        SINGLE_WRITE = 0b00010000,     // single device write
+        STACK_READ = 0b00100000,       // stack read
+        STACK_WRITE = 0b00110000,      // stack write
+        BROAD_READ = 0b01000000,       // broadcast read
+        BROAD_WRITE = 0b01010000,      // broadcast write
+        BROAD_WRITE_REV = 0b01100000,  // broadcast write reverse
     };
 
     enum class RegisterAddress : uint16_t
@@ -334,33 +350,25 @@ public:
         DEBUG_OTP_DED_BLK = 0x7A1
     };
 
-    BQ79656(HardwareSerial uart, uint8_t tx_pin) : uart_(uart), tx_pin_(tx_pin) {}
+    uint8_t *GetBuf();
+    int *GetDataLen();
 
-    void Initialize();
     void Comm(RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, byte *data);
     uint8_t *ReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size);
     void DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size);
 
-    void AutoAddressing(byte numDevices);
-
-    void SetStackSize(int newSize);
-
-    void StartBalancingSimple();
-
     // uint16_t calculateCRC();
     bool verifyCRC(uint8_t *buf);
-
-    uint8_t *GetBuf();
-    int *GetDataLen();
-    void GetVoltages(float *voltages);
-    void GetTemps(float *temps);
-    void GetCurrent(float *current);
     void WakePing();
     void CommClear();
 
+    void SetStackSize(int newSize);
+
     void EnableUartDebug();
 
+#ifdef BQTEST
 private:
+#endif
     HardwareSerial uart_;
     uint8_t tx_pin_;
 
