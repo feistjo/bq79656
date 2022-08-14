@@ -372,8 +372,8 @@ void BQ79656::GetCurrent(std::vector<float> current)
     // read current from battery
     std::vector<std::vector<uint8_t>> resp = ReadReg(RequestType::SINGLE_READ, 1, RegisterAddress::CURRENT_HI, 3);
     int16_t curr;
-    ((uint8_t *)curr)[0] = bqRespBufs[0][4];
-    ((uint8_t *)curr)[1] = bqRespBufs[1][5];
+    ((uint8_t *)&curr)[0] = bqRespBufs[0][4];
+    ((uint8_t *)&curr)[1] = bqRespBufs[1][5];
     current[0] = (float)curr * BQ_CURR_LSB / SHUNT_RESISTANCE;
 
     return;
