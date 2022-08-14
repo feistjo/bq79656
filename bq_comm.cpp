@@ -113,8 +113,8 @@ void BQ79656::DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress 
 {
     // bqComm(BQ_SINGLE_WRITE, 1, 0, BRIDGE_FAULT_RST, data);
     resp_size -= 1;  // 0 means 1 byte
-    std::vector<byte> data{resp_size};
-    Comm(req_type, 1, dev_addr, reg_addr, data);
+    data_arr_[0] = resp_size;
+    Comm(req_type, 1, dev_addr, reg_addr, data_arr_);
     delay(1);
     uart_.clear();
     /*
@@ -162,8 +162,8 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
                                                    byte resp_size)
 {
     resp_size -= 1;  // 0 means 1 byte
-    std::vector<byte> data{resp_size};
-    Comm(req_type, 1, dev_addr, reg_addr, data);
+    data_arr_[0] = resp_size;
+    Comm(req_type, 1, dev_addr, reg_addr, data_arr_);
 
     bqBufDataLen = resp_size + 7;
 
@@ -213,31 +213,31 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
 void BQ79656::AutoAddressing(byte numDevices)
 {
     stackSize = numDevices;
-    std::vector<byte> byteArr{0x00};
+    data_arr_[0] = 0x00;
 
     // Step 1: dummy broadcast write 0x00 to OTP_ECC_TEST (sync up internal DLL)
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OTP_ECC_TEST, byteArr);
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OTP_ECC_TEST, data_arr_);
 
     // Step 2: broadcast write 0x01 to CONTROL to enable auto addressing
-    byteArr[0] = 0x01;
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::CONTROL1, byteArr);
+    data_arr_[0] = 0x01;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::CONTROL1, data_arr_);
 
     // Step 3: broadcast write consecutively to DIR0_ADDR = 0, 1, 2, 3, ...
     for (byte i = 0; i <= numDevices; i++)
     {
-        byteArr[0] = i;
-        Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIR0_ADDR, byteArr);
+        data_arr_[0] = i;
+        Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIR0_ADDR, data_arr_);
     }
 
     // Step 4: broadcast write 0x02 to COMM_CTRL to set everything as stack device
-    byteArr[0] = 0x02;
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_CTRL, byteArr);
+    data_arr_[0] = 0x02;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_CTRL, data_arr_);
 
     // Step 8: single device write to set base and top of stack
-    byteArr[0] = 0x00;
-    Comm(RequestType::SINGLE_WRITE, 1, 0, RegisterAddress::COMM_CTRL, byteArr);
-    byteArr[0] = 0x03;
-    Comm(RequestType::SINGLE_WRITE, 1, numDevices, RegisterAddress::COMM_CTRL, byteArr);
+    data_arr_[0] = 0x00;
+    Comm(RequestType::SINGLE_WRITE, 1, 0, RegisterAddress::COMM_CTRL, data_arr_);
+    data_arr_[0] = 0x03;
+    Comm(RequestType::SINGLE_WRITE, 1, numDevices, RegisterAddress::COMM_CTRL, data_arr_);
 
     // Step 9: dummy broadcast read OTP_ECC_TEST (sync up internal DLL)
     DummyReadReg(RequestType::BROAD_READ, 0, RegisterAddress::OTP_ECC_TEST, 1);
@@ -263,13 +263,13 @@ void BQ79656::StartBalancingSimple()
          balTimes);
 
     // set balancing end voltage
-    std::vector<byte> vcbDone{0x3F};
-    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::VCB_DONE_THRESH, vcbDone);
+    data_arr_[0] = 0x3F;
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::VCB_DONE_THRESH, data_arr_);
 
     // start balancing with FLTSTOP_EN to stop on fault, OTCB_EN to pause on overtemp, AUTO_BAL to automatically cycle
     // between even/odd
-    std::vector<byte> startBal{0b00110011};
-    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::BAL_CTRL2, startBal);
+    data_arr_[0] = 0b00110011;
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::BAL_CTRL2, data_arr_);
 }
 
 /* void BQ79656::RunBalanceRound(double* voltages) {
@@ -320,7 +320,7 @@ void BQ79656::GetVoltages(std::vector<float> voltages)
             int16_t voltage;
             ((uint8_t *)&voltage)[0] = bqRespBufs[i][(2 * j) + 4];
             ((uint8_t *)&voltage)[1] = bqRespBufs[i][(2 * j) + 5];
-            voltages[((i - 1) * seriesPerSegment) + j] = voltage * (190.73 * 0.000001);  // Result * V_LSB_ADC
+            voltages[((i - 1) * seriesPerSegment) + j] = voltage * BQ_V_LSB_ADC;
         }
     }
     return;
@@ -348,8 +348,8 @@ void BQ79656::GetTemps(std::vector<float> temps)
             int16_t temp;
             ((uint8_t *)&temp)[0] = bqRespBufs[i][(2 * j) + 4];
             ((uint8_t *)&temp)[1] = bqRespBufs[i][(2 * j) + 5];
-            temps[((i - 1) * thermoPerSegment) + j] = temp * (152.59 * 0.000001);  // Result * V_LSB_GPIO to get voltage
-                                                                                   // TODO: calculate temp from voltage
+            temps[((i - 1) * thermoPerSegment) + j] = temp * BQ_V_LSB_GPIO;
+            // TODO: calculate temp from voltage
         }
     }
     return;

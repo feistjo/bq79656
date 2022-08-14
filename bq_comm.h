@@ -8,6 +8,8 @@
 #define BQ_UART_FREQ 1000000
 #define BQ_THERM_LSB 0.00015259   // Vlsb_gpio = 152.59uV/lsb
 #define BQ_CURR_LSB 0.0000000149  // 14.9 nv
+#define BQ_V_LSB_ADC (190.73 * 0.000001)
+#define BQ_V_LSB_GPIO (152.59 * 0.000001)
 
 #define num_series 140
 #define num_thermo 112
@@ -20,7 +22,7 @@ static uint8_t bq_uart_tx_buffer[200] = {0};
 class BQ79656
 {
 public:
-    BQ79656(HardwareSerial uart, uint8_t tx_pin) : uart_(uart), tx_pin_(tx_pin) {}
+    BQ79656(HardwareSerial uart, uint8_t tx_pin) : uart_(uart), tx_pin_(tx_pin), data_arr_(8, 0) {}
 
     void Initialize();
 
@@ -383,6 +385,7 @@ private:
 #endif
     HardwareSerial uart_;
     uint8_t tx_pin_;
+    std::vector<byte> data_arr_;
 
     void BeginUart();
 };
