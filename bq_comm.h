@@ -1,10 +1,8 @@
-//#include "bq79600_reg_defs.h"
-//#include "bq79656_reg_defs.h"
 #include <Arduino.h>
 #include <SPI.h>
 #include <stdbool.h>
 
-#include "bq_pin_defs.h"
+#include <vector>
 
 #define BQ_SPI_FREQ 6000000
 #define BQ_UART_FREQ 1000000
@@ -16,6 +14,9 @@
 #define num_segments 14          // logical segments (BQ79656-Q1 chips)
 #define SHUNT_RESISTANCE 0.0001  // 100 uohm
 
+static uint8_t bq_uart_rx_buffer[200] = {0};
+static uint8_t bq_uart_tx_buffer[200] = {0};
+
 class BQ79656
 {
 public:
@@ -23,13 +24,13 @@ public:
 
     void Initialize();
 
-    void AutoAddressing(byte numDevices);
+    void AutoAddressing(byte numDevices = num_segments);
 
     void StartBalancingSimple();
 
-    void GetVoltages(float *voltages);
-    void GetTemps(float *temps);
-    void GetCurrent(float *current);
+    void GetVoltages(std::vector<float> voltages);
+    void GetTemps(std::vector<float> temps);
+    void GetCurrent(std::vector<float> current);
 
 #ifndef BQTEST
 private:
@@ -45,7 +46,8 @@ private:
         BROAD_WRITE_REV = 0b01100000,  // broadcast write reverse
     };
 
-    enum class RegisterAddress : uint16_t
+    enum class
+        RegisterAddress : uint16_t  // https://docs.google.com/spreadsheets/d/1GyFOFbGB9zVR0eIfJ3rLILp069PXWmpAPe-eZRBfAMY/edit#gid=0
     {
         DIR0_ADDR_OTP = 0x0,
         DIR1_ADDR_OTP = 0x1,
@@ -78,8 +80,8 @@ private:
         MAIN_ADC_CAL2 = 0x1C,
         AUX_ADC_CAL1 = 0x1D,
         AUX_ADC_CAL2 = 0x1E,
-        OTP_RSVD1F = 0x1F,
-        OTP_RSVD20 = 0x20,
+        // OTP_RSVD1F = 0x1F,
+        // OTP_RSVD20 = 0x20,
         CUST_MISC1 = 0x21,
         CUST_MISC2 = 0x22,
         CUST_MISC3 = 0x23,
@@ -183,9 +185,9 @@ private:
         DIE_ID3 = 0x503,
         DIE_ID4 = 0x504,
         DIE_ID5 = 0x505,
-        DIE_ID6 = 0x506,
-        DIE_ID7 = 0x507,
-        DIE_ID8 = 0x508,
+        // DIE_ID6 = 0x506,
+        // DIE_ID7 = 0x507,
+        // DIE_ID8 = 0x508,
         DIE_ID9 = 0x509,
         CUST_CRC_RSLT_HI = 0x50C,
         CUST_CRC_RSLT_LO = 0x50D,
@@ -272,8 +274,8 @@ private:
         VCELL2_LO = 0x585,
         VCELL1_HI = 0x586,
         VCELL1_LO = 0x587,
-        BUSBAR_HI = 0x588,
-        BUSBAR_LO = 0x589,
+        // BUSBAR_HI = 0x588,
+        // BUSBAR_LO = 0x589,
         TSREF_HI = 0x58C,
         TSREF_LO = 0x58D,
         GPIO1_HI = 0x58E,
@@ -347,18 +349,28 @@ private:
         DEBUG_COML_VALID_HI = 0x790,
         DEBUG_COML_VALID_LO = 0x791,
         DEBUG_OTP_SEC_BLK = 0x7A0,
-        DEBUG_OTP_DED_BLK = 0x7A1
+        DEBUG_OTP_DED_BLK = 0x7A1,
+        CS_ADC_CAL1 = 0x1F,
+        CS_ADC_CAL2 = 0x20,
+        MAIN_CURRENT_HI = 0x588,
+        MAIN_CURRENT_LO = 0x589,
+        CURRENT_HI = 0x506,
+        CURRENT_MID = 0x507,
+        CURRENT_LO = 0x508
     };
 
-    uint8_t *GetBuf();
-    int *GetDataLen();
+    std::vector<uint8_t> GetBuf();
+    int& GetDataLen();
 
-    void Comm(RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, byte *data);
-    uint8_t *ReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size);
+    void Comm(RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, std::vector<byte> data);
+    std::vector<std::vector<uint8_t>> ReadReg(RequestType req_type,
+                                              byte dev_addr,
+                                              RegisterAddress reg_addr,
+                                              byte resp_size);
     void DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size);
 
     // uint16_t calculateCRC();
-    bool verifyCRC(uint8_t *buf);
+    bool verifyCRC(std::vector<uint8_t> buf);
     void WakePing();
     void CommClear();
 
