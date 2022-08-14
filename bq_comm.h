@@ -28,10 +28,12 @@ public:
 
     void AutoAddressing(byte numDevices = num_segments);
 
+    void ProcessBalancing(std::vector<float> voltages);
+
     void StartBalancingSimple();
 
     void GetVoltages(std::vector<float> voltages);
-    void GetTemps(std::vector<float> temps);
+    void GetTemps(std::vector<float> temperatures);
     void GetCurrent(std::vector<float> current);
 
 #ifndef BQTEST
@@ -375,6 +377,8 @@ private:
     bool verifyCRC(std::vector<uint8_t> buf);
     void WakePing();
     void CommClear();
+
+    void SetAllDataArrValues(byte value);
 
     void SetStackSize(int newSize);
 

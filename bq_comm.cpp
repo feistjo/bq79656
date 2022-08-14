@@ -1,5 +1,8 @@
 #include "bq_comm.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "Crc16.h"
 #define serialdebug 1
 
@@ -248,7 +251,7 @@ void BQ79656::AutoAddressing(byte numDevices)
 
 /**
  * @brief Starts balancing with timers set at 300 seconds and stop voltage at 4V
- * Only works with cells per segment <= 14! (due to single stack write limitations)
+ * Only works with cells per segment <= 8! (due to single stack write limitations)
  *
  */
 void BQ79656::StartBalancingSimple()
@@ -270,6 +273,71 @@ void BQ79656::StartBalancingSimple()
     // between even/odd
     data_arr_[0] = 0b00110011;
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::BAL_CTRL2, data_arr_);
+}
+
+/**
+ * @brief Runs a round of balancing on all segments in the stack
+ *
+ * @param voltages A vector<float> of the entire stack's voltages
+ */
+void BQ79656::ProcessBalancing(std::vector<float> voltages)
+{
+    float min_voltage = *std::min_element(voltages.begin(), voltages.end());
+    float max_voltage = *std::max_element(voltages.begin(), voltages.end());
+    static constexpr float balancing_threshold{0.01};
+    if (max_voltage - min_voltage < balancing_threshold)
+    {
+        return;
+    }
+    // Find all cell voltages above threshold over min voltage, set balance timers for whichever is worse of even/odd
+    // for each logical segment
+    int seriesPerSegment = num_series / num_segments;
+    for (int segment = 0; segment < num_segments; segment++)
+    {
+        std::vector<float>::iterator max_segment_voltage_iter =
+            std::max_element(voltages.begin() + seriesPerSegment, voltages.begin() + (2 * seriesPerSegment));
+        float max_segment_voltage = *max_segment_voltage_iter;
+        if (max_segment_voltage - min_voltage >= balancing_threshold)
+        {
+            SetAllDataArrValues(0);
+            int message = 0;  // num_messages = std::round((seriesPerSegment / 8.0f) + 0.5);
+            for (int cell = (max_segment_voltage_iter - (voltages.begin() + seriesPerSegment))
+                            % 2;  // 0 if even is worse, 1 if odd is worse
+                 cell < seriesPerSegment;
+                 cell = cell + 2)
+            {
+                data_arr_[8 - (cell % 8)] =
+                    voltages[cell + (segment * seriesPerSegment)] - min_voltage >= balancing_threshold
+                        ? 0x01
+                        : 0x00;  // 10s if balancing needed
+
+                if (cell % 8 == 0 || cell == seriesPerSegment - 1)  // if data_arr_ full, send message
+                {
+                    const int cells_in_message = cell % 8 == 0 ? 8 : cell % 8;
+                    Comm(RequestType::SINGLE_WRITE,
+                         cells_in_message,
+                         segment,
+                         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1
+                                                      - ((message * 8) + cells_in_message)),
+                         data_arr_);  // data size = cells in message,
+                    SetAllDataArrValues(0);
+                    message++;
+                }
+            }
+        }
+    }
+
+    // set balancing end voltage
+    data_arr_[0] = 0x3F;
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::VCB_DONE_THRESH, data_arr_);
+}
+
+void BQ79656::SetAllDataArrValues(byte value)
+{
+    for (int i = 0; i < data_arr_.size(); i++)
+    {
+        data_arr_[i] = value;
+    }
 }
 
 /* void BQ79656::RunBalanceRound(double* voltages) {
