@@ -396,10 +396,12 @@ private:
     std::vector<byte> data_arr_;
     const float kShuntResistance;
 
-    std::vector<uint8_t> bqBuf(176, 0);
-    std::vector<std::vector<uint8_t>> bqRespBufs(kNumSegments + 1, std::vector<uint8_t>(176, 0));
-    int bqBufDataLen = 0;
-    int stackSize = 0;
+    std::vector<uint8_t> bqBuf;
+    std::vector<std::vector<uint8_t>> bqRespBufs;
+    int bqBufDataLen{0};
+    int stackSize{0};
+
+    Crc16 crc;
 
     void BeginUart();
 };

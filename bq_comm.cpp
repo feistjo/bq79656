@@ -6,7 +6,9 @@
 #include "Crc16.h"
 #define serialdebug 1
 
-Crc16 crc;
+std::vector<uint8_t> BQ79656::bqBuf(176, 0);
+std::vector<std::vector<uint8_t>> BQ79656::bqRespBufs(kNumSegments + 1, std::vector<uint8_t>(176, 0));
+
 #define CONTROL1_SEND_WAKE 0b00100000
 
 /**
