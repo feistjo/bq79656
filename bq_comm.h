@@ -5,10 +5,12 @@
 
 #include <vector>
 
+#include "Crc16.h"
+
 #define BQ_SPI_FREQ 6000000
 #define BQ_UART_FREQ 1000000
-#define BQ_THERM_LSB 0.00015259  // Vlsb_gpio = 152.59uV/lsb
-#define BQ_CURR_LSB 0.0000000149 // 14.9 nv
+#define BQ_THERM_LSB 0.00015259   // Vlsb_gpio = 152.59uV/lsb
+#define BQ_CURR_LSB 0.0000000149  // 14.9 nv
 #define BQ_V_LSB_ADC (190.73 * 0.000001)
 #define BQ_V_LSB_GPIO (152.59 * 0.000001)
 
@@ -26,7 +28,15 @@ template <uint16_t kNumCellsSeries = 140, uint16_t kNumThermistors = 112, uint16
 class BQ79656
 {
 public:
-    BQ79656(HardwareSerial uart, uint8_t tx_pin, float shunt_resistance = 0.0001f) : uart_{uart}, tx_pin_{tx_pin}, data_arr_(8, 0), kShuntResistance{shunt_resistance} {}
+    BQ79656(HardwareSerial uart, uint8_t tx_pin, float shunt_resistance = 0.0001f)
+        : uart_{uart},
+          tx_pin_{tx_pin},
+          data_arr_(8, 0),
+          kShuntResistance{shunt_resistance},
+          bqBuf(176, 0),
+          bqRespBufs(kNumSegments + 1, std::vector<uint8_t>(176, 0))
+    {
+    }
 
     void Initialize();
 
@@ -45,17 +55,17 @@ private:
 #endif
     enum class RequestType : byte
     {
-        SINGLE_READ = 0b00000000,     // single device read
-        SINGLE_WRITE = 0b00010000,    // single device write
-        STACK_READ = 0b00100000,      // stack read
-        STACK_WRITE = 0b00110000,     // stack write
-        BROAD_READ = 0b01000000,      // broadcast read
-        BROAD_WRITE = 0b01010000,     // broadcast write
-        BROAD_WRITE_REV = 0b01100000, // broadcast write reverse
+        SINGLE_READ = 0b00000000,      // single device read
+        SINGLE_WRITE = 0b00010000,     // single device write
+        STACK_READ = 0b00100000,       // stack read
+        STACK_WRITE = 0b00110000,      // stack write
+        BROAD_READ = 0b01000000,       // broadcast read
+        BROAD_WRITE = 0b01010000,      // broadcast write
+        BROAD_WRITE_REV = 0b01100000,  // broadcast write reverse
     };
 
     enum class
-        RegisterAddress : uint16_t // https://docs.google.com/spreadsheets/d/1GyFOFbGB9zVR0eIfJ3rLILp069PXWmpAPe-eZRBfAMY/edit#gid=0
+        RegisterAddress : uint16_t  // https://docs.google.com/spreadsheets/d/1GyFOFbGB9zVR0eIfJ3rLILp069PXWmpAPe-eZRBfAMY/edit#gid=0
     {
         DIR0_ADDR_OTP = 0x0,
         DIR1_ADDR_OTP = 0x1,
