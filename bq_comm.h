@@ -12,10 +12,10 @@
 #define BQ_V_LSB_ADC (190.73 * 0.000001)
 #define BQ_V_LSB_GPIO (152.59 * 0.000001)
 
-#define num_series 140
-#define num_thermo 112
-#define num_segments 14         // logical segments (BQ79656-Q1 chips)
-#define SHUNT_RESISTANCE 0.0001 // 100 uohm
+#define kNumThermistors 112
+#define kNumCellsSeries 140
+#define kNumSegments 14         // logical segments (BQ79656-Q1 chips)
+#define kShuntResistance 0.0001 // 100 uohm
 
 static uint8_t bq_uart_rx_buffer[200] = {0};
 static uint8_t bq_uart_tx_buffer[200] = {0};
@@ -23,11 +23,11 @@ static uint8_t bq_uart_tx_buffer[200] = {0};
 class BQ79656
 {
 public:
-    BQ79656(HardwareSerial uart, uint8_t tx_pin) : uart_(uart), tx_pin_(tx_pin), data_arr_(8, 0) {}
+    BQ79656(HardwareSerial uart, uint8_t tx_pin, uint16_t num_cells_series = 140, uint16_t num_thermistors = 112, uint16_t kNumSegments = 14, float shunt_resistance = 0.0001f) : uart_(uart), tx_pin_(tx_pin), data_arr_(8, 0) {}
 
     void Initialize();
 
-    void AutoAddressing(byte numDevices = num_segments);
+    void AutoAddressing(byte numDevices = kNumSegments);
 
     void ProcessBalancing(std::vector<float> voltages);
 
@@ -391,6 +391,10 @@ private:
     HardwareSerial uart_;
     uint8_t tx_pin_;
     std::vector<byte> data_arr_;
+    const uint16_t kNumThermistors;
+    const uint16_t kNumCellsSeries;
+    const uint16_t kNumSegments;
+    const float kShuntResistance;
 
     void BeginUart();
 };

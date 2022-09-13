@@ -7,7 +7,7 @@
 #define serialdebug 1
 
 std::vector<uint8_t> bqBuf(176, 0);
-std::vector<std::vector<uint8_t>> bqRespBufs(num_segments + 1, std::vector<uint8_t>(176, 0));
+std::vector<std::vector<uint8_t>> bqRespBufs(kNumSegments + 1, std::vector<uint8_t>(176, 0));
 int bqBufDataLen = 0;
 int stackSize = 0;
 
@@ -22,7 +22,7 @@ void BQ79656::BeginUart()
 {
     uart_.addMemoryForRead(bq_uart_rx_buffer, 200);
     uart_.addMemoryForWrite(bq_uart_tx_buffer, 200);
-    uart_.begin(BQ_UART_FREQ, SERIAL_8N1_HALF_DUPLEX);  // BQ79656 uart interface is half duplex
+    uart_.begin(BQ_UART_FREQ, SERIAL_8N1_HALF_DUPLEX); // BQ79656 uart interface is half duplex
 }
 
 /**
@@ -41,7 +41,7 @@ void BQ79656::Initialize()
     // delay(11 * 15); // at least 10ms+600us per chip
     //  byteArr[0] = 0x00;
     //  bqComm(BQ_BROAD_WRITE, 1, 0, STACK_COMM_TIMEOUT_CONF, byteArr);
-    AutoAddressing(num_segments);
+    AutoAddressing(kNumSegments);
 
     /*//enable NFAULT and FCOMM, is enabled by default
     byte[] byteArr = {0b00010100};
@@ -64,11 +64,9 @@ void BQ79656::Initialize()
 void BQ79656::Comm(
     RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, std::vector<byte> data)
 {
-    data_size -= 1;                                                                  // 0 means 1 byte
-    bqBuf[0] = 0b10000000 | static_cast<byte>(req_type) | (data_size & 0b00000111);  // command | req_type | data_size
-    bool isStackOrBroad = (req_type == RequestType::STACK_READ) || (req_type == RequestType::STACK_WRITE)
-                          || (req_type == RequestType::BROAD_READ) || (req_type == RequestType::BROAD_WRITE)
-                          || (req_type == RequestType::BROAD_WRITE_REV);
+    data_size -= 1;                                                                 // 0 means 1 byte
+    bqBuf[0] = 0b10000000 | static_cast<byte>(req_type) | (data_size & 0b00000111); // command | req_type | data_size
+    bool isStackOrBroad = (req_type == RequestType::STACK_READ) || (req_type == RequestType::STACK_WRITE) || (req_type == RequestType::BROAD_READ) || (req_type == RequestType::BROAD_WRITE) || (req_type == RequestType::BROAD_WRITE_REV);
     if (!isStackOrBroad)
     {
         bqBuf[1] = dev_addr;
@@ -80,7 +78,7 @@ void BQ79656::Comm(
         bqBuf[3 + i + (!isStackOrBroad)] = data[i];
     }
     uint16_t command_crc = crc.Modbus(
-        bqBuf.data(), 0, 3 + data_size + (!isStackOrBroad));  // calculates the CRC, but the bytes are backwards
+        bqBuf.data(), 0, 3 + data_size + (!isStackOrBroad)); // calculates the CRC, but the bytes are backwards
     bqBuf[4 + data_size + (!isStackOrBroad)] = command_crc & 0xFF;
     bqBuf[5 + data_size + (!isStackOrBroad)] = command_crc >> 8;
 
@@ -115,7 +113,7 @@ void BQ79656::Comm(
 void BQ79656::DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size)
 {
     // bqComm(BQ_SINGLE_WRITE, 1, 0, BRIDGE_FAULT_RST, data);
-    resp_size -= 1;  // 0 means 1 byte
+    resp_size -= 1; // 0 means 1 byte
     data_arr_[0] = resp_size;
     Comm(req_type, 1, dev_addr, reg_addr, data_arr_);
     delay(1);
@@ -164,7 +162,7 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
                                                    RegisterAddress reg_addr,
                                                    byte resp_size)
 {
-    resp_size -= 1;  // 0 means 1 byte
+    resp_size -= 1; // 0 means 1 byte
     data_arr_[0] = resp_size;
     Comm(req_type, 1, dev_addr, reg_addr, data_arr_);
 
@@ -204,14 +202,14 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
         Serial.println();
 #endif
     }
-    return bqRespBufs;  //(uint8_t**)bqRespBufs;
+    return bqRespBufs; //(uint8_t**)bqRespBufs;
 }
 
 /**
  * @brief Starts the BQ chips and auto-addresses the stack, as defined in section 4 of the BQ79616-Q1 software design
  * reference
  *
- * @param numDevices The number of devices in the stack, defaults to num_segments
+ * @param numDevices The number of devices in the stack, defaults to kNumSegments
  */
 void BQ79656::AutoAddressing(byte numDevices)
 {
@@ -256,7 +254,7 @@ void BQ79656::AutoAddressing(byte numDevices)
  */
 void BQ79656::StartBalancingSimple()
 {
-    int seriesPerSegment = num_series / num_segments;
+    int seriesPerSegment = kNumCellsSeries / kNumSegments;
     // set up balancing time control registers to 300s (0x04)
     std::vector<byte> balTimes(seriesPerSegment, 0x04);
     Comm(RequestType::STACK_WRITE,
@@ -291,8 +289,8 @@ void BQ79656::ProcessBalancing(std::vector<float> voltages)
     }
     // Find all cell voltages above threshold over min voltage, set balance timers for whichever is worse of even/odd
     // for each logical segment
-    int seriesPerSegment = num_series / num_segments;
-    for (int segment = 0; segment < num_segments; segment++)
+    int seriesPerSegment = kNumCellsSeries / kNumSegments;
+    for (int segment = 0; segment < kNumSegments; segment++)
     {
         std::vector<float>::iterator max_segment_voltage_iter =
             std::max_element(voltages.begin() + seriesPerSegment, voltages.begin() + (2 * seriesPerSegment));
@@ -300,26 +298,24 @@ void BQ79656::ProcessBalancing(std::vector<float> voltages)
         if (max_segment_voltage - min_voltage >= balancing_threshold)
         {
             SetAllDataArrValues(0);
-            int message = 0;  // num_messages = std::round((seriesPerSegment / 8.0f) + 0.5);
-            for (int cell = (max_segment_voltage_iter - (voltages.begin() + seriesPerSegment))
-                            % 2;  // 0 if even is worse, 1 if odd is worse
+            int message = 0;                                                                        // num_messages = std::round((seriesPerSegment / 8.0f) + 0.5);
+            for (int cell = (max_segment_voltage_iter - (voltages.begin() + seriesPerSegment)) % 2; // 0 if even is worse, 1 if odd is worse
                  cell < seriesPerSegment;
                  cell = cell + 2)
             {
                 data_arr_[8 - (cell % 8)] =
                     voltages[cell + (segment * seriesPerSegment)] - min_voltage >= balancing_threshold
                         ? 0x01
-                        : 0x00;  // 10s if balancing needed
+                        : 0x00; // 10s if balancing needed
 
-                if (cell % 8 == 0 || cell == seriesPerSegment - 1)  // if data_arr_ full, send message
+                if (cell % 8 == 0 || cell == seriesPerSegment - 1) // if data_arr_ full, send message
                 {
                     const int cells_in_message = cell % 8 == 0 ? 8 : cell % 8;
                     Comm(RequestType::SINGLE_WRITE,
                          cells_in_message,
                          segment,
-                         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1
-                                                      - ((message * 8) + cells_in_message)),
-                         data_arr_);  // data size = cells in message,
+                         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1 - ((message * 8) + cells_in_message)),
+                         data_arr_); // data size = cells in message,
                     SetAllDataArrValues(0);
                     message++;
                 }
@@ -341,7 +337,7 @@ void BQ79656::SetAllDataArrValues(byte value)
 }
 
 /* void BQ79656::RunBalanceRound(double* voltages) {
-  int seriesPerSegment = num_series / num_segments;
+  int seriesPerSegment = kNumCellsSeries / kNumSegments;
 
 
   for (int i = 1; i <= stackSize; i++) {
@@ -373,14 +369,14 @@ int &BQ79656::GetDataLen() { return bqBufDataLen; }
 void BQ79656::GetVoltages(std::vector<float> voltages)
 {
     // read voltages from battery
-    int seriesPerSegment = num_series / num_segments;
+    int seriesPerSegment = kNumCellsSeries / kNumSegments;
     ReadReg(
         RequestType::STACK_READ,
         0,
         static_cast<RegisterAddress>((static_cast<uint16_t>(RegisterAddress::VCELL1_LO) + 1) - (seriesPerSegment * 2)),
         seriesPerSegment * 2);
 
-    // fill in num_series voltages to array
+    // fill in kNumCellsSeries voltages to array
     for (int i = 1; i <= stackSize; i++)
     {
         for (int j = 0; j < seriesPerSegment; j++)
@@ -402,13 +398,13 @@ void BQ79656::GetVoltages(std::vector<float> voltages)
 void BQ79656::GetTemps(std::vector<float> temps)
 {
     // read temps from battery
-    int thermoPerSegment = num_series / num_segments;
+    int thermoPerSegment = kNumCellsSeries / kNumSegments;
     ReadReg(RequestType::STACK_READ,
             0,
             static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::GPIO1_HI) - 1),
             thermoPerSegment * 2);
 
-    // fill in num_thermo temperatures to array
+    // fill in kNumThermistors temperatures to array
     for (int i = 1; i <= stackSize; i++)
     {
         for (int j = 0; j < thermoPerSegment; j++)
@@ -442,7 +438,7 @@ void BQ79656::GetCurrent(std::vector<float> current)
     int16_t curr;
     ((uint8_t *)&curr)[0] = bqRespBufs[0][4];
     ((uint8_t *)&curr)[1] = bqRespBufs[1][5];
-    current[0] = (float)curr * BQ_CURR_LSB / SHUNT_RESISTANCE;
+    current[0] = (float)curr * BQ_CURR_LSB / kShuntResistance;
 
     return;
 }
@@ -456,7 +452,7 @@ void BQ79656::GetCurrent(std::vector<float> current)
 // Convert a voltage measurement into a current
 /* double BQ79656::VoltageToCurrent(int raw) {
   double volts = raw * BQ_CURR_LSB;
-  return volts / SHUNT_RESISTANCE;
+  return volts / kShuntResistance;
 } */
 
 /**
@@ -473,8 +469,7 @@ void BQ79656::WakePing()
     digitalWrite(tx_pin_, HIGH);
     BeginUart();
     delayMicroseconds(
-        (10000 + 600)
-        * num_segments);  //(10ms shutdown to active transition + 600us propogation of wake) * number_of_devices
+        (10000 + 600) * kNumSegments); //(10ms shutdown to active transition + 600us propogation of wake) * number_of_devices
 }
 
 /**
