@@ -12,11 +12,6 @@
 #define BQ_V_LSB_ADC (190.73 * 0.000001)
 #define BQ_V_LSB_GPIO (152.59 * 0.000001)
 
-#define kNumThermistors 112
-#define kNumCellsSeries 140
-#define kNumSegments 14         // logical segments (BQ79656-Q1 chips)
-#define kShuntResistance 0.0001 // 100 uohm
-
 static uint8_t bq_uart_rx_buffer[200] = {0};
 static uint8_t bq_uart_tx_buffer[200] = {0};
 
@@ -395,6 +390,11 @@ private:
     const uint16_t kNumCellsSeries;
     const uint16_t kNumSegments;
     const float kShuntResistance;
+
+    std::vector<uint8_t> bqBuf(176, 0);
+    std::vector<std::vector<uint8_t>> bqRespBufs(kNumSegments + 1, std::vector<uint8_t>(176, 0));
+    int bqBufDataLen = 0;
+    int stackSize = 0;
 
     void BeginUart();
 };
