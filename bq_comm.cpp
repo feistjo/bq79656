@@ -13,6 +13,7 @@ Crc16 crc;
  * @brief Starts the uart interface connected to the BQ79656 bridge chip
  *
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::BeginUart()
 {
     uart_.addMemoryForRead(bq_uart_rx_buffer, 200);
@@ -24,6 +25,7 @@ void BQ79656::BeginUart()
  * @brief Initializes communication with the BQ796XX stack
  *
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::Initialize()
 {
     BeginUart();
@@ -56,6 +58,7 @@ void BQ79656::Initialize()
  * @param reg_addr The address of the register being accessed
  * @param data The 1-8 byte payload, which for a read is one less than the number of bytes being read
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::Comm(
     RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, std::vector<byte> data)
 {
@@ -105,6 +108,7 @@ void BQ79656::Comm(
  * @param reg_addr The address of the register being accessed
  * @param resp_size The size in bytes of the expected response
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size)
 {
     // bqComm(BQ_SINGLE_WRITE, 1, 0, BRIDGE_FAULT_RST, data);
@@ -152,6 +156,7 @@ void BQ79656::DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress 
  * @param resp_size The number of bytes being read
  * @return uint8_t* An array of response buffers
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
                                                    byte dev_addr,
                                                    RegisterAddress reg_addr,
@@ -206,6 +211,7 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
  *
  * @param numDevices The number of devices in the stack, defaults to kNumSegments
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::AutoAddressing(byte numDevices)
 {
     stackSize = numDevices;
@@ -247,6 +253,7 @@ void BQ79656::AutoAddressing(byte numDevices)
  * Only works with cells per segment <= 8! (due to single stack write limitations)
  *
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::StartBalancingSimple()
 {
     int seriesPerSegment = kNumCellsSeries / kNumSegments;
@@ -273,6 +280,7 @@ void BQ79656::StartBalancingSimple()
  *
  * @param voltages A vector<float> of the entire stack's voltages
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::ProcessBalancing(std::vector<float> voltages)
 {
     float min_voltage = *std::min_element(voltages.begin(), voltages.end());
@@ -323,6 +331,7 @@ void BQ79656::ProcessBalancing(std::vector<float> voltages)
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::VCB_DONE_THRESH, data_arr_);
 }
 
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::SetAllDataArrValues(byte value)
 {
     for (int i = 0; i < data_arr_.size(); i++)
@@ -340,12 +349,14 @@ void BQ79656::SetAllDataArrValues(byte value)
   }
 } */
 
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::SetStackSize(int newSize) { stackSize = newSize; }
 
 /*uint16_t calculateCRC() {
   return crc.Modbus(txBuf, 0, txDataLen);
 }*/
 
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 bool BQ79656::verifyCRC(std::vector<uint8_t> buf) { return crc.Modbus(buf.data(), 0, bqBufDataLen) == 0; }
 
 std::vector<uint8_t> BQ79656::GetBuf() { return bqBuf; }
@@ -354,6 +365,7 @@ std::vector<uint8_t> BQ79656::GetBuf() { return bqBuf; }
   return (uint8_t**)bqRespBufs;
 } */
 
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 int &BQ79656::GetDataLen() { return bqBufDataLen; }
 
 /**
@@ -361,6 +373,7 @@ int &BQ79656::GetDataLen() { return bqBufDataLen; }
  *
  * @param voltages A vector<float> to fill in with the newly read voltages
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::GetVoltages(std::vector<float> voltages)
 {
     // read voltages from battery
@@ -390,6 +403,7 @@ void BQ79656::GetVoltages(std::vector<float> voltages)
  *
  * @param temps A vector<float> to fill in with the newly read temperatures
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::GetTemps(std::vector<float> temps)
 {
     // read temps from battery
@@ -414,6 +428,7 @@ void BQ79656::GetTemps(std::vector<float> temps)
     return;
 }
 
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::EnableUartDebug()
 {
     // void bqComm(byte req_type, byte data_size, byte dev_addr, uint16_t reg_addr, byte* data);
@@ -426,6 +441,7 @@ void BQ79656::EnableUartDebug()
  *
  * @param current A vector<float> to place the newly read current into
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::GetCurrent(std::vector<float> current)
 {
     // read current from battery
@@ -454,6 +470,7 @@ void BQ79656::GetCurrent(std::vector<float> current)
  * @brief Sends a 2.5ms active-low wake ping to the BQ79656 bridge
  *
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::WakePing()
 {
     // Output a pulse of low on RX for ~2.5ms to wake chip
@@ -471,6 +488,7 @@ void BQ79656::WakePing()
  * @brief Sends a 15 bit period active-low comm clear ping to the BQ79656 bridge
  *
  */
+template <uint16_t kNumCellsSeries, uint16_t kNumThermistors, uint16_t kNumSegments>
 void BQ79656::CommClear()
 {
     // Output a pulse of low on RX for 15 bit periods to wake chip
