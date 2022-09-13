@@ -1,3 +1,4 @@
+#pragma once
 #include <Arduino.h>
 #include <SPI.h>
 #include <stdbool.h>
@@ -6,15 +7,15 @@
 
 #define BQ_SPI_FREQ 6000000
 #define BQ_UART_FREQ 1000000
-#define BQ_THERM_LSB 0.00015259   // Vlsb_gpio = 152.59uV/lsb
-#define BQ_CURR_LSB 0.0000000149  // 14.9 nv
+#define BQ_THERM_LSB 0.00015259  // Vlsb_gpio = 152.59uV/lsb
+#define BQ_CURR_LSB 0.0000000149 // 14.9 nv
 #define BQ_V_LSB_ADC (190.73 * 0.000001)
 #define BQ_V_LSB_GPIO (152.59 * 0.000001)
 
 #define num_series 140
 #define num_thermo 112
-#define num_segments 14          // logical segments (BQ79656-Q1 chips)
-#define SHUNT_RESISTANCE 0.0001  // 100 uohm
+#define num_segments 14         // logical segments (BQ79656-Q1 chips)
+#define SHUNT_RESISTANCE 0.0001 // 100 uohm
 
 static uint8_t bq_uart_rx_buffer[200] = {0};
 static uint8_t bq_uart_tx_buffer[200] = {0};
@@ -41,17 +42,17 @@ private:
 #endif
     enum class RequestType : byte
     {
-        SINGLE_READ = 0b00000000,      // single device read
-        SINGLE_WRITE = 0b00010000,     // single device write
-        STACK_READ = 0b00100000,       // stack read
-        STACK_WRITE = 0b00110000,      // stack write
-        BROAD_READ = 0b01000000,       // broadcast read
-        BROAD_WRITE = 0b01010000,      // broadcast write
-        BROAD_WRITE_REV = 0b01100000,  // broadcast write reverse
+        SINGLE_READ = 0b00000000,     // single device read
+        SINGLE_WRITE = 0b00010000,    // single device write
+        STACK_READ = 0b00100000,      // stack read
+        STACK_WRITE = 0b00110000,     // stack write
+        BROAD_READ = 0b01000000,      // broadcast read
+        BROAD_WRITE = 0b01010000,     // broadcast write
+        BROAD_WRITE_REV = 0b01100000, // broadcast write reverse
     };
 
     enum class
-        RegisterAddress : uint16_t  // https://docs.google.com/spreadsheets/d/1GyFOFbGB9zVR0eIfJ3rLILp069PXWmpAPe-eZRBfAMY/edit#gid=0
+        RegisterAddress : uint16_t // https://docs.google.com/spreadsheets/d/1GyFOFbGB9zVR0eIfJ3rLILp069PXWmpAPe-eZRBfAMY/edit#gid=0
     {
         DIR0_ADDR_OTP = 0x0,
         DIR1_ADDR_OTP = 0x1,
@@ -364,7 +365,7 @@ private:
     };
 
     std::vector<uint8_t> GetBuf();
-    int& GetDataLen();
+    int &GetDataLen();
 
     void Comm(RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, std::vector<byte> data);
     std::vector<std::vector<uint8_t>> ReadReg(RequestType req_type,
