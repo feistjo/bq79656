@@ -6,18 +6,15 @@
 #include "Crc16.h"
 // #define serialdebug 1
 
-std::vector<uint8_t> bqBuf(176, 0);
-std::vector<std::vector<uint8_t>> bqRespBufs(num_segments + 1, std::vector<uint8_t>(176, 0));
-int bqBufDataLen = 0;
-int stackSize = 0;
+#define CONTROL1_SEND_WAKE 0b00100000
 
 Crc16 crc;
-#define CONTROL1_SEND_WAKE 0b00100000
 
 /**
  * @brief Starts the uart interface connected to the BQ79656 bridge chip
  *
  */
+
 void BQ79656::BeginUart()
 {
     uart_.addMemoryForRead(bq_uart_rx_buffer, 200);
@@ -29,6 +26,7 @@ void BQ79656::BeginUart()
  * @brief Initializes communication with the BQ796XX stack
  *
  */
+
 void BQ79656::Initialize()
 {
     BeginUart();
@@ -111,6 +109,7 @@ void BQ79656::SetProtectors(float ov_thresh, float uv_thresh, float ot_thresh, f
  * @param reg_addr The address of the register being accessed
  * @param data The 1-8 byte payload, which for a read is one less than the number of bytes being read
  */
+
 void BQ79656::Comm(
     RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, std::vector<byte> data)
 {
@@ -164,6 +163,7 @@ void BQ79656::Comm(
  * @param reg_addr The address of the register being accessed
  * @param resp_size The size in bytes of the expected response
  */
+
 void BQ79656::DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size)
 {
     // bqComm(BQ_SINGLE_WRITE, 1, 0, BRIDGE_FAULT_RST, data);
@@ -211,6 +211,7 @@ void BQ79656::DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress 
  * @param resp_size The number of bytes being read
  * @return uint8_t* An array of response buffers
  */
+
 std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
                                                    byte dev_addr,
                                                    RegisterAddress reg_addr,
@@ -263,8 +264,9 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
  * @brief Starts the BQ chips and auto-addresses the stack, as defined in section 4 of the BQ79616-Q1 software design
  * reference
  *
- * @param numDevices The number of devices in the stack, defaults to num_segments
+ * @param numDevices The number of devices in the stack, defaults to kNumSegments
  */
+
 void BQ79656::AutoAddressing(byte numDevices)
 {
     stackSize = numDevices;
@@ -310,9 +312,10 @@ void BQ79656::AutoAddressing(byte numDevices)
  * Only works with cells per segment <= 8! (due to single stack write limitations)
  *
  */
+
 void BQ79656::StartBalancingSimple()
 {
-    int seriesPerSegment = num_series / num_segments;
+    int seriesPerSegment = kNumCellsSeries / kNumSegments;
     // set up balancing time control registers to 300s (0x04)
     std::vector<byte> balTimes(seriesPerSegment, 0x04);
     Comm(RequestType::STACK_WRITE,
@@ -336,6 +339,7 @@ void BQ79656::StartBalancingSimple()
  *
  * @param voltages A vector<float> of the entire stack's voltages
  */
+
 void BQ79656::ProcessBalancing(std::vector<float> voltages)
 {
     float min_voltage = *std::min_element(voltages.begin(), voltages.end());
@@ -347,8 +351,8 @@ void BQ79656::ProcessBalancing(std::vector<float> voltages)
     }
     // Find all cell voltages above threshold over min voltage, set balance timers for whichever is worse of even/odd
     // for each logical segment
-    int seriesPerSegment = num_series / num_segments;
-    for (int segment = 0; segment < num_segments; segment++)
+    int seriesPerSegment = kNumCellsSeries / kNumSegments;
+    for (int segment = 0; segment < kNumSegments; segment++)
     {
         std::vector<float>::iterator max_segment_voltage_iter =
             std::max_element(voltages.begin() + seriesPerSegment, voltages.begin() + (2 * seriesPerSegment));
@@ -397,7 +401,7 @@ void BQ79656::SetAllDataArrValues(byte value)
 }
 
 /* void BQ79656::RunBalanceRound(double* voltages) {
-  int seriesPerSegment = num_series / num_segments;
+  int seriesPerSegment = kNumCellsSeries / kNumSegments;
 
 
   for (int i = 1; i <= stackSize; i++) {
@@ -429,7 +433,7 @@ int &BQ79656::GetDataLen() { return bqBufDataLen; }
 void BQ79656::GetVoltages(std::vector<float> &voltages)
 {
     // read voltages from battery
-    int seriesPerSegment = num_series / num_segments;
+    int seriesPerSegment = kNumCellsSeries / kNumSegments;
     ReadReg(
         RequestType::BROAD_READ,
         0,
@@ -459,13 +463,13 @@ void BQ79656::GetVoltages(std::vector<float> &voltages)
 void BQ79656::GetTemps(std::vector<float> &temps)
 {
     // read temps from battery
-    int thermoPerSegment = num_series / num_segments;
+    int thermoPerSegment = kNumCellsSeries / kNumSegments;
     ReadReg(RequestType::STACK_READ,
             0,
             static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::GPIO1_HI) - 1),
             thermoPerSegment * 2);
 
-    // fill in num_thermo temperatures to array
+    // fill in kNumThermistors temperatures to array
     for (int i = 1; i <= stackSize; i++)
     {
         for (int j = 0; j < thermoPerSegment; j++)
@@ -499,7 +503,7 @@ void BQ79656::GetCurrent(std::vector<float> &current)
     int16_t curr;
     ((uint8_t *)&curr)[0] = bqRespBufs[0][4];
     ((uint8_t *)&curr)[1] = bqRespBufs[1][5];
-    current[0] = (float)curr * BQ_CURR_LSB / SHUNT_RESISTANCE;
+    current[0] = (float)curr * BQ_CURR_LSB / kShuntResistance;
 
     return;
 }
@@ -513,13 +517,14 @@ void BQ79656::GetCurrent(std::vector<float> &current)
 // Convert a voltage measurement into a current
 /* double BQ79656::VoltageToCurrent(int raw) {
   double volts = raw * BQ_CURR_LSB;
-  return volts / SHUNT_RESISTANCE;
+  return volts / kShuntResistance;
 } */
 
 /**
  * @brief Sends a 2.5ms active-low wake ping to the BQ79656 bridge
  *
  */
+
 void BQ79656::WakePing()
 {
     // Output a pulse of low on RX for ~2.5ms to wake chip
@@ -531,13 +536,14 @@ void BQ79656::WakePing()
     BeginUart();
     delayMicroseconds(
         (10000 + 600)
-        * num_segments);  //(10ms shutdown to active transition + 600us propogation of wake) * number_of_devices
+        * kNumSegments);  //(10ms shutdown to active transition + 600us propogation of wake) * number_of_devices
 }
 
 /**
  * @brief Sends a 15 bit period active-low comm clear ping to the BQ79656 bridge
  *
  */
+
 void BQ79656::CommClear()
 {
     // Output a pulse of low on RX for 15 bit periods to wake chip
