@@ -22,9 +22,11 @@ static uint8_t bq_uart_tx_buffer[200] = {0};
 class BQ79656
 {
 public:
-    BQ79656(HardwareSerial uart, uint8_t tx_pin) : uart_(uart), tx_pin_(tx_pin), data_arr_(8, 0) {}
+    BQ79656(HardwareSerial& uart, uint8_t tx_pin) : uart_(uart), tx_pin_(tx_pin), data_arr_(8, 0) {}
 
     void Initialize();
+
+    void SetProtectors(float ov_thresh, float uv_thresh, float ot_thresh, float ut_thresh);
 
     void AutoAddressing(byte numDevices = num_segments);
 
@@ -32,9 +34,9 @@ public:
 
     void StartBalancingSimple();
 
-    void GetVoltages(std::vector<float> voltages);
-    void GetTemps(std::vector<float> temperatures);
-    void GetCurrent(std::vector<float> current);
+    void GetVoltages(std::vector<float>& voltages);
+    void GetTemps(std::vector<float>& temperatures);
+    void GetCurrent(std::vector<float>& current);
 
 #ifndef BQTEST
 private:
@@ -384,10 +386,14 @@ private:
 
     void EnableUartDebug();
 
+    void StartOVUV();
+
+    void StartOTUT();
+
 #ifdef BQTEST
 private:
 #endif
-    HardwareSerial uart_;
+    HardwareSerial& uart_;
     uint8_t tx_pin_;
     std::vector<byte> data_arr_;
 

@@ -4,7 +4,7 @@
 #include <cmath>
 
 #include "Crc16.h"
-#define serialdebug 1
+// #define serialdebug 1
 
 std::vector<uint8_t> bqBuf(176, 0);
 std::vector<std::vector<uint8_t>> bqRespBufs(num_segments + 1, std::vector<uint8_t>(176, 0));
@@ -22,7 +22,7 @@ void BQ79656::BeginUart()
 {
     uart_.addMemoryForRead(bq_uart_rx_buffer, 200);
     uart_.addMemoryForWrite(bq_uart_tx_buffer, 200);
-    uart_.begin(BQ_UART_FREQ, SERIAL_8N1_HALF_DUPLEX);  // BQ79656 uart interface is half duplex
+    uart_.begin(BQ_UART_FREQ);  //, SERIAL_8N1_HALF_DUPLEX);  // BQ79656 uart interface is half duplex
 }
 
 /**
@@ -41,7 +41,20 @@ void BQ79656::Initialize()
     // delay(11 * 15); // at least 10ms+600us per chip
     //  byteArr[0] = 0x00;
     //  bqComm(BQ_BROAD_WRITE, 1, 0, STACK_COMM_TIMEOUT_CONF, byteArr);
-    AutoAddressing(num_segments);
+    // AutoAddressing(num_segments);
+    AutoAddressing(1);
+
+    data_arr_[0] = 0b00001101;  // disable short comm timeout, long timeout action shutdown, long comm timeout 10 min
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_TIMEOUT_CONF, data_arr_);
+#ifdef serialdebug
+    Serial.println("Start main ADC to run continuously");
+#endif
+    data_arr_[0] = 0b00000110;
+    Comm(BQ79656::RequestType::BROAD_WRITE,
+         1,
+         0,
+         BQ79656::RegisterAddress::ADC_CTRL1,
+         data_arr_);  // TODO: make stack write
 
     /*//enable NFAULT and FCOMM, is enabled by default
     byte[] byteArr = {0b00010100};
@@ -50,6 +63,43 @@ void BQ79656::Initialize()
     // enable FCOMM_EN of stack devices, unnecessary because enabled by default
 
     // Broadcast write sleep time to prevent sleeping
+}
+
+void BQ79656::StartOVUV()
+{
+    data_arr_[0] = 0b00000101;                                                    // OVUV_GO, OVUV_MODE round robin
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OVUV_CTRL, data_arr_);  // TODO: make stack instead of broad
+}
+
+void BQ79656::StartOTUT()
+{
+    data_arr_[0] = 0b00000101;                                                    // OTUT_BO, mode=round robin
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OTUT_CTRL, data_arr_);  // TODO: make stack instead of broad
+}
+
+/**
+ * @brief Set the overvoltage, undervoltage, overtemperature, and undertemperature registers on the stack and starts the
+ * protectors in round-robin mode
+ *
+ * @param ov_thresh
+ * @param uv_thresh
+ * @param ot_thresh
+ * @param ut_thresh
+ */
+void BQ79656::SetProtectors(float ov_thresh, float uv_thresh, float ot_thresh, float ut_thresh)
+{
+    uint8_t ov_offset = (ov_thresh - 4.175f) / 0.025f;
+    data_arr_[0] = 0b00111111 & (ov_offset + 0x22);
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OV_THRESH, data_arr_);  // TODO: change to stack
+
+    uint8_t uv_offset = (uv_thresh - 1.2f) / 0.050f;
+    data_arr_[0] = 0b00111111 & uv_offset;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::UV_THRESH, data_arr_);  // TODO: change to stack
+
+    // TODO: implement OTUT
+
+    StartOVUV();
+    // StartOTUT();
 }
 
 /**
@@ -80,7 +130,7 @@ void BQ79656::Comm(
         bqBuf[3 + i + (!isStackOrBroad)] = data[i];
     }
     uint16_t command_crc = crc.Modbus(
-        bqBuf.data(), 0, 3 + data_size + (!isStackOrBroad));  // calculates the CRC, but the bytes are backwards
+        bqBuf.data(), 0, 4 + data_size + (!isStackOrBroad));  // calculates the CRC, but the bytes are backwards
     bqBuf[4 + data_size + (!isStackOrBroad)] = command_crc & 0xFF;
     bqBuf[5 + data_size + (!isStackOrBroad)] = command_crc >> 8;
 
@@ -98,10 +148,12 @@ void BQ79656::Comm(
     Serial.println("Sending frame:");
 #endif
 
-    for (int i = 0; i <= 5 + data_size + (!isStackOrBroad); i++)
+    /* for (int i = 0; i <= 5 + data_size + (!isStackOrBroad); i++)
     {
         uart_.write(bqBuf[i]);
-    }
+    } */
+    uart_.write(bqBuf.data(), 5 + data_size + (!isStackOrBroad) + 1);
+    delay(4);
 }
 
 /**
@@ -239,14 +291,18 @@ void BQ79656::AutoAddressing(byte numDevices)
     // Step 8: single device write to set base and top of stack
     data_arr_[0] = 0x00;
     Comm(RequestType::SINGLE_WRITE, 1, 0, RegisterAddress::COMM_CTRL, data_arr_);
-    data_arr_[0] = 0x03;
+    data_arr_[0] = 0x01;
     Comm(RequestType::SINGLE_WRITE, 1, numDevices, RegisterAddress::COMM_CTRL, data_arr_);
 
     // Step 9: dummy broadcast read OTP_ECC_TEST (sync up internal DLL)
     DummyReadReg(RequestType::BROAD_READ, 0, RegisterAddress::OTP_ECC_TEST, 1);
 
+    // clear comm faults
+    data_arr_[0] = 0x03;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::FAULT_RST2, data_arr_);
+
     // stack read address 0x306 to verify addresses
-    // ReadReg(RequestType::STACK_READ, 0, RegisterAddress::DIR0_ADDR, 1);
+    ReadReg(RequestType::BROAD_READ, 0, RegisterAddress::DIR0_ADDR, 1);
 }
 
 /**
@@ -265,7 +321,7 @@ void BQ79656::StartBalancingSimple()
          static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1 - seriesPerSegment),
          balTimes);
 
-    // set balancing end voltage
+    // set balancing end voltage to 4V (max)
     data_arr_[0] = 0x3F;
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::VCB_DONE_THRESH, data_arr_);
 
@@ -366,29 +422,30 @@ std::vector<uint8_t> BQ79656::GetBuf() { return bqBuf; }
 int &BQ79656::GetDataLen() { return bqBufDataLen; }
 
 /**
- * @brief Reads the voltages from the battery
+ * @brief Reads the voltages from the battery. Note: ADC must be running beforehand!
  *
  * @param voltages A vector<float> to fill in with the newly read voltages
  */
-void BQ79656::GetVoltages(std::vector<float> voltages)
+void BQ79656::GetVoltages(std::vector<float> &voltages)
 {
     // read voltages from battery
     int seriesPerSegment = num_series / num_segments;
     ReadReg(
-        RequestType::STACK_READ,
+        RequestType::BROAD_READ,
         0,
         static_cast<RegisterAddress>((static_cast<uint16_t>(RegisterAddress::VCELL1_LO) + 1) - (seriesPerSegment * 2)),
         seriesPerSegment * 2);
 
     // fill in num_series voltages to array
-    for (int i = 1; i <= stackSize; i++)
+    for (int i = 0; i <= stackSize; i++)  // TODO: should start at i=1 to skip bottom
     {
         for (int j = 0; j < seriesPerSegment; j++)
         {
             int16_t voltage;
-            ((uint8_t *)&voltage)[0] = bqRespBufs[i][(2 * j) + 4];
-            ((uint8_t *)&voltage)[1] = bqRespBufs[i][(2 * j) + 5];
-            voltages[((i - 1) * seriesPerSegment) + j] = voltage * BQ_V_LSB_ADC;
+            ((uint8_t *)&voltage)[1] = bqRespBufs[stackSize - i][(2 * j) + 4];
+            ((uint8_t *)&voltage)[0] = bqRespBufs[stackSize - i][(2 * j) + 5];
+            voltages[((i /* - 1*/) * seriesPerSegment) + j] =
+                voltage * BQ_V_LSB_ADC;  // TODO: uncomment part once using for stack
         }
     }
     return;
@@ -399,7 +456,7 @@ void BQ79656::GetVoltages(std::vector<float> voltages)
  *
  * @param temps A vector<float> to fill in with the newly read temperatures
  */
-void BQ79656::GetTemps(std::vector<float> temps)
+void BQ79656::GetTemps(std::vector<float> &temps)
 {
     // read temps from battery
     int thermoPerSegment = num_series / num_segments;
@@ -435,7 +492,7 @@ void BQ79656::EnableUartDebug()
  *
  * @param current A vector<float> to place the newly read current into
  */
-void BQ79656::GetCurrent(std::vector<float> current)
+void BQ79656::GetCurrent(std::vector<float> &current)
 {
     // read current from battery
     std::vector<std::vector<uint8_t>> resp = ReadReg(RequestType::SINGLE_READ, 1, RegisterAddress::CURRENT_HI, 3);
