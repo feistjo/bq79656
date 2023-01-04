@@ -34,33 +34,35 @@ void BQ79656::Initialize()
     // send commands to start/configure stack
     // todo
     WakePing();
-    // byte byteArr[] = {CONTROL1_SEND_WAKE};
-    // Comm(BQ79656::RequestType::SINGLE_WRITE, 1, 0, RegisterAddress::CONTROL1, byteArr);
-    // delay(11 * 15); // at least 10ms+600us per chip
-    //  byteArr[0] = 0x00;
-    //  bqComm(BQ_BROAD_WRITE, 1, 0, STACK_COMM_TIMEOUT_CONF, byteArr);
+
     // AutoAddressing(num_segments);
     AutoAddressing(1);
 
     data_arr_[0] = 0b00001101;  // disable short comm timeout, long timeout action shutdown, long comm timeout 10 min
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_TIMEOUT_CONF, data_arr_);
+
+    // set active cells for OV/UV
+    uint8_t series_per_segment = kNumCellsSeries / kNumSegments;
+    data_arr_[0] = 0b00001111 & (series_per_segment - 6);
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::ACTIVE_CELL, data_arr_);  // TODO: change to stack
+
+    // enable TSREF
+    data_arr_[0] = 0b00000001;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::CONTROL2, data_arr_);  // TODO: make stack write
+
+    // set up all GPIOs as ADC + OTUT inputs
+    data_arr_[0] = 0b00001001;
+    data_arr_[1] = 0b00001001;
+    data_arr_[2] = 0b00001001;
+    data_arr_[3] = 0b00001001;
+    Comm(RequestType::BROAD_WRITE, 4, 0, RegisterAddress::GPIO_CONF1, data_arr_);  // TODO: make stack write
+
 #ifdef serialdebug
     Serial.println("Start main ADC to run continuously");
 #endif
     data_arr_[0] = 0b00000110;
-    Comm(BQ79656::RequestType::BROAD_WRITE,
-         1,
-         0,
-         BQ79656::RegisterAddress::ADC_CTRL1,
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::ADC_CTRL1,
          data_arr_);  // TODO: make stack write
-
-    /*//enable NFAULT and FCOMM, is enabled by default
-    byte[] byteArr = {0b00010100};
-    bqComm(BQ_SINGLE_WRITE, 1, 0, BRIDGE_DEV_CONF1, byteArr);*/
-
-    // enable FCOMM_EN of stack devices, unnecessary because enabled by default
-
-    // Broadcast write sleep time to prevent sleeping
 }
 
 void BQ79656::StartOVUV()
@@ -95,9 +97,13 @@ void BQ79656::SetProtectors(float ov_thresh, float uv_thresh, float ot_thresh, f
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::UV_THRESH, data_arr_);  // TODO: change to stack
 
     // TODO: implement OTUT
+    uint8_t ut_offset = ((thermistor_.TemperatureToVoltage(ut_thresh) / 5.0f) * (100 / 2)) - 66;
+    uint8_t ot_offset = ((thermistor_.TemperatureToVoltage(ot_thresh) / 5.0f) * 100) - 10;
+    data_arr_[0] = (0b11100000 & (ut_offset << 5)) | (0b00011111 & ot_offset);
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OTUT_THRESH, data_arr_);  // TODO: change to stack
 
     StartOVUV();
-    // StartOTUT();
+    StartOTUT();
 }
 
 /**
@@ -477,7 +483,7 @@ void BQ79656::GetTemps(std::vector<float> &temps)
             int16_t temp;
             ((uint8_t *)&temp)[0] = bqRespBufs[i][(2 * j) + 4];
             ((uint8_t *)&temp)[1] = bqRespBufs[i][(2 * j) + 5];
-            temps[((i - 1) * thermoPerSegment) + j] = temp * BQ_V_LSB_GPIO;
+            temps[((i - 1) * thermoPerSegment) + j] = thermistor_.VoltageToTemperature(temp * BQ_V_LSB_GPIO);
             // TODO: calculate temp from voltage
         }
     }
@@ -499,11 +505,15 @@ void BQ79656::EnableUartDebug()
 void BQ79656::GetCurrent(std::vector<float> &current)
 {
     // read current from battery
-    std::vector<std::vector<uint8_t>> resp = ReadReg(RequestType::SINGLE_READ, 1, RegisterAddress::CURRENT_HI, 3);
-    int16_t curr;
-    ((uint8_t *)&curr)[0] = bqRespBufs[0][4];
-    ((uint8_t *)&curr)[1] = bqRespBufs[1][5];
-    current[0] = (float)curr * BQ_CURR_LSB / kShuntResistance;
+    std::vector<std::vector<uint8_t>> resp =
+        ReadReg(RequestType::SINGLE_READ, 0, RegisterAddress::CURRENT_HI, 3);  // TODO: set to device 1
+    int32_t curr;
+    ((uint8_t *)&curr)[2] = bqRespBufs[0][4];
+    ((uint8_t *)&curr)[1] = bqRespBufs[0][5];
+    ((uint8_t *)&curr)[0] = bqRespBufs[0][6];
+    curr = curr << 8;
+    curr = curr >> 8;
+    current[0] = (curr / kShuntResistance) * BQ_CURR_LSB;
 
     return;
 }

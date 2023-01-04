@@ -5,6 +5,8 @@
 
 #include <vector>
 
+#include "thermistor.h"
+
 #define BQ_SPI_FREQ 6000000
 #define BQ_UART_FREQ 1000000
 #define BQ_THERM_LSB 0.00015259   // Vlsb_gpio = 152.59uV/lsb
@@ -20,12 +22,14 @@ class BQ79656
 public:
     BQ79656(HardwareSerial& uart,
             uint8_t tx_pin,
+            IThermistor& thermistor,
             uint16_t num_cells_series = 140,
             uint16_t num_thermistors = 112,
             uint16_t num_segments = 14,
             float shunt_resistance = 0.0001f)
         : uart_{uart},
           tx_pin_{tx_pin},
+          thermistor_{thermistor},
           data_arr_(8, 0),
           kNumCellsSeries{num_cells_series},
           kNumThermistors{num_thermistors},
@@ -372,9 +376,9 @@ private:
         CS_ADC_CAL2 = 0x20,
         MAIN_CURRENT_HI = 0x588,
         MAIN_CURRENT_LO = 0x589,
-        CURRENT_HI = 0x506,
-        CURRENT_MID = 0x507,
-        CURRENT_LO = 0x508
+        CURRENT_HI = 0x5D6,
+        CURRENT_MID = 0x5D7,
+        CURRENT_LO = 0x5D8
     };
 
     std::vector<uint8_t> GetBuf();
@@ -407,6 +411,7 @@ private:
 #endif
     HardwareSerial& uart_;
     uint8_t tx_pin_;
+    IThermistor& thermistor_;
     std::vector<byte> data_arr_;
     const uint16_t kNumCellsSeries;
     const uint16_t kNumThermistors;
