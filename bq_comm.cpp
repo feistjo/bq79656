@@ -4,7 +4,7 @@
 #include <cmath>
 
 #include "Crc16.h"
-// #define serialdebug 1
+#define serialdebug 1
 
 #define CONTROL1_SEND_WAKE 0b00100000
 
@@ -31,12 +31,13 @@ void BQ79656::Initialize()
 {
     BeginUart();
 
+    delay(50);
     // send commands to start/configure stack
     // todo
     WakePing();
 
     // AutoAddressing(num_segments);
-    AutoAddressing(1);
+    AutoAddressing(stackSize);
 
     data_arr_[0] = 0b00001101;  // disable short comm timeout, long timeout action shutdown, long comm timeout 10 min
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_TIMEOUT_CONF, data_arr_);
@@ -44,37 +45,36 @@ void BQ79656::Initialize()
     // set active cells for OV/UV
     uint8_t series_per_segment = kNumCellsSeries / kNumSegments;
     data_arr_[0] = 0b00001111 & (series_per_segment - 6);
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::ACTIVE_CELL, data_arr_);  // TODO: change to stack
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::ACTIVE_CELL, data_arr_);
 
     // enable TSREF
     data_arr_[0] = 0b00000001;
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::CONTROL2, data_arr_);  // TODO: make stack write
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::CONTROL2, data_arr_);
 
     // set up all GPIOs as ADC + OTUT inputs
     data_arr_[0] = 0b00001001;
     data_arr_[1] = 0b00001001;
     data_arr_[2] = 0b00001001;
     data_arr_[3] = 0b00001001;
-    Comm(RequestType::BROAD_WRITE, 4, 0, RegisterAddress::GPIO_CONF1, data_arr_);  // TODO: make stack write
+    Comm(RequestType::STACK_WRITE, 4, 0, RegisterAddress::GPIO_CONF1, data_arr_);
 
 #ifdef serialdebug
     Serial.println("Start main ADC to run continuously");
 #endif
     data_arr_[0] = 0b00000110;
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::ADC_CTRL1,
-         data_arr_);  // TODO: make stack write
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::ADC_CTRL1, data_arr_);
 }
 
 void BQ79656::StartOVUV()
 {
-    data_arr_[0] = 0b00000101;                                                    // OVUV_GO, OVUV_MODE round robin
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OVUV_CTRL, data_arr_);  // TODO: make stack instead of broad
+    data_arr_[0] = 0b00000101;  // OVUV_GO, OVUV_MODE round robin
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::OVUV_CTRL, data_arr_);
 }
 
 void BQ79656::StartOTUT()
 {
-    data_arr_[0] = 0b00000101;                                                    // OTUT_BO, mode=round robin
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OTUT_CTRL, data_arr_);  // TODO: make stack instead of broad
+    data_arr_[0] = 0b00000101;  // OTUT_BO, mode=round robin
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::OTUT_CTRL, data_arr_);
 }
 
 /**
@@ -90,17 +90,16 @@ void BQ79656::SetProtectors(float ov_thresh, float uv_thresh, float ot_thresh, f
 {
     uint8_t ov_offset = (ov_thresh - 4.175f) / 0.025f;
     data_arr_[0] = 0b00111111 & (ov_offset + 0x22);
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OV_THRESH, data_arr_);  // TODO: change to stack
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::OV_THRESH, data_arr_);
 
     uint8_t uv_offset = (uv_thresh - 1.2f) / 0.050f;
     data_arr_[0] = 0b00111111 & uv_offset;
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::UV_THRESH, data_arr_);  // TODO: change to stack
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::UV_THRESH, data_arr_);
 
-    // TODO: implement OTUT
     uint8_t ut_offset = ((thermistor_.TemperatureToVoltage(ut_thresh) / 5.0f) * (100 / 2)) - 66;
     uint8_t ot_offset = ((thermistor_.TemperatureToVoltage(ot_thresh) / 5.0f) * 100) - 10;
     data_arr_[0] = (0b11100000 & (ut_offset << 5)) | (0b00011111 & ot_offset);
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::OTUT_THRESH, data_arr_);  // TODO: change to stack
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::OTUT_THRESH, data_arr_);
 
     StartOVUV();
     StartOTUT();
@@ -297,9 +296,9 @@ void BQ79656::AutoAddressing(byte numDevices)
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_CTRL, data_arr_);
 
     // Step 8: single device write to set base and top of stack
-    data_arr_[0] = 0x00;
+    data_arr_[0] = 0x00;  // not stack device
     Comm(RequestType::SINGLE_WRITE, 1, 0, RegisterAddress::COMM_CTRL, data_arr_);
-    data_arr_[0] = 0x01;
+    data_arr_[0] = 0x03;  // stack and top
     Comm(RequestType::SINGLE_WRITE, 1, numDevices, RegisterAddress::COMM_CTRL, data_arr_);
 
     // Step 9: dummy broadcast read OTP_ECC_TEST (sync up internal DLL)
@@ -447,15 +446,14 @@ void BQ79656::GetVoltages(std::vector<float> &voltages)
         seriesPerSegment * 2);
 
     // fill in num_series voltages to array
-    for (int i = 0; i <= stackSize; i++)  // TODO: should start at i=1 to skip bottom
+    for (int i = 1; i <= stackSize; i++)
     {
         for (int j = 0; j < seriesPerSegment; j++)
         {
             int16_t voltage;
             ((uint8_t *)&voltage)[1] = bqRespBufs[stackSize - i][(2 * j) + 4];
             ((uint8_t *)&voltage)[0] = bqRespBufs[stackSize - i][(2 * j) + 5];
-            voltages[((i /* - 1*/) * seriesPerSegment) + j] =
-                voltage * BQ_V_LSB_ADC;  // TODO: uncomment part once using for stack
+            voltages[((i - 1) * seriesPerSegment) + j] = voltage * BQ_V_LSB_ADC;
         }
     }
     return;
@@ -484,7 +482,6 @@ void BQ79656::GetTemps(std::vector<float> &temps)
             ((uint8_t *)&temp)[0] = bqRespBufs[i][(2 * j) + 4];
             ((uint8_t *)&temp)[1] = bqRespBufs[i][(2 * j) + 5];
             temps[((i - 1) * thermoPerSegment) + j] = thermistor_.VoltageToTemperature(temp * BQ_V_LSB_GPIO);
-            // TODO: calculate temp from voltage
         }
     }
     return;
@@ -505,8 +502,7 @@ void BQ79656::EnableUartDebug()
 void BQ79656::GetCurrent(std::vector<float> &current)
 {
     // read current from battery
-    std::vector<std::vector<uint8_t>> resp =
-        ReadReg(RequestType::SINGLE_READ, 0, RegisterAddress::CURRENT_HI, 3);  // TODO: set to device 1
+    std::vector<std::vector<uint8_t>> resp = ReadReg(RequestType::SINGLE_READ, 1, RegisterAddress::CURRENT_HI, 3);
     int32_t curr;
     ((uint8_t *)&curr)[2] = bqRespBufs[0][4];
     ((uint8_t *)&curr)[1] = bqRespBufs[0][5];
