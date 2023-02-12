@@ -35,8 +35,8 @@ public:
           kNumThermistors{num_thermistors},
           kNumSegments{num_segments},
           kShuntResistance{shunt_resistance},
-          bqBuf(176, 0),
-          bqRespBufs(kNumSegments + 1, std::vector<uint8_t>(176, 0))
+          bq_buffer_(176, 0),
+          bq_response_buffers_(kNumSegments + 1, std::vector<uint8_t>(176, 0))
     {
     }
 
@@ -418,10 +418,10 @@ private:
     const uint16_t kNumSegments;
     const float kShuntResistance;
 
-    std::vector<uint8_t> bqBuf;
-    std::vector<std::vector<uint8_t>> bqRespBufs;
-    int bqBufDataLen{0};
-    int stackSize{0};
+    std::vector<uint8_t> bq_buffer_;
+    std::vector<std::vector<uint8_t>> bq_response_buffers_;
+    int bq_buffer_data_length_{0};
+    int stack_size_{0};
 
     void BeginUart();
 };

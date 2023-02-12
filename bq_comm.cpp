@@ -37,7 +37,7 @@ void BQ79656::Initialize()
     WakePing();
 
     // AutoAddressing(num_segments);
-    AutoAddressing(stackSize);
+    AutoAddressing(stack_size_);
 
     data_arr_[0] = 0b00001101;  // disable short comm timeout, long timeout action shutdown, long comm timeout 10 min
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_TIMEOUT_CONF, data_arr_);
@@ -118,31 +118,32 @@ void BQ79656::SetProtectors(float ov_thresh, float uv_thresh, float ot_thresh, f
 void BQ79656::Comm(
     RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, std::vector<byte> data)
 {
-    data_size -= 1;                                                                  // 0 means 1 byte
-    bqBuf[0] = 0b10000000 | static_cast<byte>(req_type) | (data_size & 0b00000111);  // command | req_type | data_size
+    data_size -= 1;  // 0 means 1 byte
+    bq_buffer_[0] =
+        0b10000000 | static_cast<byte>(req_type) | (data_size & 0b00000111);  // command | req_type | data_size
     bool isStackOrBroad = (req_type == RequestType::STACK_READ) || (req_type == RequestType::STACK_WRITE)
                           || (req_type == RequestType::BROAD_READ) || (req_type == RequestType::BROAD_WRITE)
                           || (req_type == RequestType::BROAD_WRITE_REV);
     if (!isStackOrBroad)
     {
-        bqBuf[1] = dev_addr;
+        bq_buffer_[1] = dev_addr;
     }
-    bqBuf[1 + (!isStackOrBroad)] = static_cast<uint16_t>(reg_addr) >> 8;
-    bqBuf[2 + (!isStackOrBroad)] = static_cast<uint16_t>(reg_addr) & 0xFF;
+    bq_buffer_[1 + (!isStackOrBroad)] = static_cast<uint16_t>(reg_addr) >> 8;
+    bq_buffer_[2 + (!isStackOrBroad)] = static_cast<uint16_t>(reg_addr) & 0xFF;
     for (int i = 0; i <= data_size; i++)
     {
-        bqBuf[3 + i + (!isStackOrBroad)] = data[i];
+        bq_buffer_[3 + i + (!isStackOrBroad)] = data[i];
     }
     uint16_t command_crc = crc.Modbus(
-        bqBuf.data(), 0, 4 + data_size + (!isStackOrBroad));  // calculates the CRC, but the bytes are backwards
-    bqBuf[4 + data_size + (!isStackOrBroad)] = command_crc & 0xFF;
-    bqBuf[5 + data_size + (!isStackOrBroad)] = command_crc >> 8;
+        bq_buffer_.data(), 0, 4 + data_size + (!isStackOrBroad));  // calculates the CRC, but the bytes are backwards
+    bq_buffer_[4 + data_size + (!isStackOrBroad)] = command_crc & 0xFF;
+    bq_buffer_[5 + data_size + (!isStackOrBroad)] = command_crc >> 8;
 
 #ifdef serialdebug
     Serial.println("Command: ");
     for (int i = 0; i <= 5 + data_size + (!isStackOrBroad); i++)
     {
-        Serial.print(bqBuf[i], HEX);
+        Serial.print(bq_buffer_[i], HEX);
         Serial.print(" ");
     }
     Serial.println();
@@ -154,9 +155,9 @@ void BQ79656::Comm(
 
     /* for (int i = 0; i <= 5 + data_size + (!isStackOrBroad); i++)
     {
-        uart_.write(bqBuf[i]);
+        uart_.write(bq_buffer_[i]);
     } */
-    uart_.write(bqBuf.data(), 5 + data_size + (!isStackOrBroad) + 1);
+    uart_.write(bq_buffer_.data(), 5 + data_size + (!isStackOrBroad) + 1);
     delay(4);
 }
 
@@ -178,15 +179,15 @@ void BQ79656::DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress 
     delay(1);
     uart_.clear();
     /*
-    bqBufDataLen = resp_size + 7;
+    bq_buffer_data_length_ = resp_size + 7;
     delay(10);
     if (digitalRead(spi_rdy_pin_bq))
     {
-      for (int j = 0; j < bqBufDataLen; j++)
+      for (int j = 0; j < bq_buffer_data_length_; j++)
       {
-        bqRespBufs[0][j] = 0xFF;
+        bq_response_buffers_[0][j] = 0xFF;
       }
-      SPI.transfer(bqRespBufs, bqBufDataLen);
+      SPI.transfer(bq_response_buffers_, bq_buffer_data_length_);
     }
     else
     {
@@ -226,16 +227,16 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
     data_arr_[0] = resp_size;
     Comm(req_type, 1, dev_addr, reg_addr, data_arr_);
 
-    bqBufDataLen = resp_size + 7;
+    bq_buffer_data_length_ = resp_size + 7;
 
     int numExpectedResponses = 1;
     if (req_type == RequestType::STACK_READ)
     {
-        numExpectedResponses = stackSize;
+        numExpectedResponses = stack_size_;
     }
     if (req_type == RequestType::BROAD_READ)
     {
-        numExpectedResponses = stackSize + 1;
+        numExpectedResponses = stack_size_ + 1;
     }
 
     for (int i = 0; i < numExpectedResponses; i++)
@@ -251,18 +252,18 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
         Serial.println("Reading data");
 #endif
 
-        uart_.readBytes(bqRespBufs[i].data(), bqBufDataLen);
+        uart_.readBytes(bq_response_buffers_[i].data(), bq_buffer_data_length_);
 
 #ifdef serialdebug
-        for (int j = 0; j < bqBufDataLen; j++)
+        for (int j = 0; j < bq_buffer_data_length_; j++)
         {
-            Serial.print(bqRespBufs[i][j], HEX);
+            Serial.print(bq_response_buffers_[i][j], HEX);
             Serial.print(" ");
         }
         Serial.println();
 #endif
     }
-    return bqRespBufs;  //(uint8_t**)bqRespBufs;
+    return bq_response_buffers_;  //(uint8_t**)bq_response_buffers_;
 }
 
 /**
@@ -274,7 +275,7 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
 
 void BQ79656::AutoAddressing(byte numDevices)
 {
-    stackSize = numDevices;
+    stack_size_ = numDevices;
     data_arr_[0] = 0x00;
 
     // Step 1: dummy broadcast write 0x00 to OTP_ECC_TEST (sync up internal DLL)
@@ -409,26 +410,26 @@ void BQ79656::SetAllDataArrValues(byte value)
   int seriesPerSegment = kNumCellsSeries / kNumSegments;
 
 
-  for (int i = 1; i <= stackSize; i++) {
+  for (int i = 1; i <= stack_size_; i++) {
 
   }
 } */
 
-void BQ79656::SetStackSize(int newSize) { stackSize = newSize; }
+void BQ79656::SetStackSize(int newSize) { stack_size_ = newSize; }
 
 /*uint16_t calculateCRC() {
   return crc.Modbus(txBuf, 0, txDataLen);
 }*/
 
-bool BQ79656::verifyCRC(std::vector<uint8_t> buf) { return crc.Modbus(buf.data(), 0, bqBufDataLen) == 0; }
+bool BQ79656::verifyCRC(std::vector<uint8_t> buf) { return crc.Modbus(buf.data(), 0, bq_buffer_data_length_) == 0; }
 
-std::vector<uint8_t> BQ79656::GetBuf() { return bqBuf; }
+std::vector<uint8_t> BQ79656::GetBuf() { return bq_buffer_; }
 
 /* uint8_t** BQ79656::GetRespBufs() {
-  return (uint8_t**)bqRespBufs;
+  return (uint8_t**)bq_response_buffers_;
 } */
 
-int &BQ79656::GetDataLen() { return bqBufDataLen; }
+int &BQ79656::GetDataLen() { return bq_buffer_data_length_; }
 
 /**
  * @brief Reads the voltages from the battery. Note: ADC must be running beforehand!
@@ -446,13 +447,13 @@ void BQ79656::GetVoltages(std::vector<float> &voltages)
         seriesPerSegment * 2);
 
     // fill in num_series voltages to array
-    for (int i = 1; i <= stackSize; i++)
+    for (int i = 1; i <= stack_size_; i++)
     {
         for (int j = 0; j < seriesPerSegment; j++)
         {
             int16_t voltage;
-            ((uint8_t *)&voltage)[1] = bqRespBufs[stackSize - i][(2 * j) + 4];
-            ((uint8_t *)&voltage)[0] = bqRespBufs[stackSize - i][(2 * j) + 5];
+            ((uint8_t *)&voltage)[1] = bq_response_buffers_[stack_size_ - i][(2 * j) + 4];
+            ((uint8_t *)&voltage)[0] = bq_response_buffers_[stack_size_ - i][(2 * j) + 5];
             voltages[((i - 1) * seriesPerSegment) + j] = voltage * BQ_V_LSB_ADC;
         }
     }
@@ -474,13 +475,13 @@ void BQ79656::GetTemps(std::vector<float> &temps)
             thermoPerSegment * 2);
 
     // fill in kNumThermistors temperatures to array
-    for (int i = 1; i <= stackSize; i++)
+    for (int i = 1; i <= stack_size_; i++)
     {
         for (int j = 0; j < thermoPerSegment; j++)
         {
             int16_t temp;
-            ((uint8_t *)&temp)[0] = bqRespBufs[i][(2 * j) + 4];
-            ((uint8_t *)&temp)[1] = bqRespBufs[i][(2 * j) + 5];
+            ((uint8_t *)&temp)[0] = bq_response_buffers_[i][(2 * j) + 4];
+            ((uint8_t *)&temp)[1] = bq_response_buffers_[i][(2 * j) + 5];
             temps[((i - 1) * thermoPerSegment) + j] = thermistor_.VoltageToTemperature(temp * BQ_V_LSB_GPIO);
         }
     }
@@ -504,9 +505,9 @@ void BQ79656::GetCurrent(std::vector<float> &current)
     // read current from battery
     std::vector<std::vector<uint8_t>> resp = ReadReg(RequestType::SINGLE_READ, 1, RegisterAddress::CURRENT_HI, 3);
     int32_t curr;
-    ((uint8_t *)&curr)[2] = bqRespBufs[0][4];
-    ((uint8_t *)&curr)[1] = bqRespBufs[0][5];
-    ((uint8_t *)&curr)[0] = bqRespBufs[0][6];
+    ((uint8_t *)&curr)[2] = bq_response_buffers_[0][4];
+    ((uint8_t *)&curr)[1] = bq_response_buffers_[0][5];
+    ((uint8_t *)&curr)[0] = bq_response_buffers_[0][6];
     curr = curr << 8;
     curr = curr >> 8;
     current[0] = (curr / kShuntResistance) * BQ_CURR_LSB;
