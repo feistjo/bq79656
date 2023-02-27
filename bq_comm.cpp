@@ -19,7 +19,8 @@ void BQ79656::BeginUart()
 {
     uart_.addMemoryForRead(bq_uart_rx_buffer, 200);
     uart_.addMemoryForWrite(bq_uart_tx_buffer, 200);
-    uart_.begin(BQ_UART_FREQ);  //, SERIAL_8N1_HALF_DUPLEX);  // BQ79656 uart interface is half duplex
+    uart_.begin(BQ_UART_FREQ);  //, SERIAL_8N1_HALF_DUPLEX);  // BQ79656 uart interface is half duplex, but Teensy can't
+                                //switch from write to read fast enough
 }
 
 /**
@@ -63,6 +64,18 @@ void BQ79656::Initialize()
 #endif
     data_arr_[0] = 0b00000110;
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::ADC_CTRL1, data_arr_);
+    delay(10);
+
+    data_arr_[0] = kFaultMask1;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::FAULT_MSK1, data_arr_);
+
+    data_arr_[0] = kFaultMask2;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::FAULT_MSK2, data_arr_);
+
+    // clear all faults
+    data_arr_[0] = 0xFF;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::FAULT_RST1, data_arr_);
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::FAULT_RST2, data_arr_);
 }
 
 void BQ79656::StartOVUV()
@@ -73,7 +86,7 @@ void BQ79656::StartOVUV()
 
 void BQ79656::StartOTUT()
 {
-    data_arr_[0] = 0b00000101;  // OTUT_BO, mode=round robin
+    data_arr_[0] = 0b00000101;  // OTUT_GO, mode=round robin
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::OTUT_CTRL, data_arr_);
 }
 
@@ -101,8 +114,10 @@ void BQ79656::SetProtectors(float ov_thresh, float uv_thresh, float ot_thresh, f
     data_arr_[0] = (0b11100000 & (ut_offset << 5)) | (0b00011111 & ot_offset);
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::OTUT_THRESH, data_arr_);
 
+    delay(5);
+
     StartOVUV();
-    StartOTUT();
+    //  StartOTUT(); TODO
 }
 
 /**
@@ -153,10 +168,6 @@ void BQ79656::Comm(
     Serial.println("Sending frame:");
 #endif
 
-    /* for (int i = 0; i <= 5 + data_size + (!isStackOrBroad); i++)
-    {
-        uart_.write(bq_buffer_[i]);
-    } */
     uart_.write(bq_buffer_.data(), 5 + data_size + (!isStackOrBroad) + 1);
     delay(4);
 }
@@ -263,7 +274,7 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
         Serial.println();
 #endif
     }
-    return bq_response_buffers_;  //(uint8_t**)bq_response_buffers_;
+    return bq_response_buffers_;
 }
 
 /**
@@ -305,9 +316,13 @@ void BQ79656::AutoAddressing(byte numDevices)
     // Step 9: dummy broadcast read OTP_ECC_TEST (sync up internal DLL)
     DummyReadReg(RequestType::BROAD_READ, 0, RegisterAddress::OTP_ECC_TEST, 1);
 
-    // clear comm faults
-    data_arr_[0] = 0x03;
+    // clear all faults
+    data_arr_[0] = 0xFF;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::FAULT_RST1, data_arr_);
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::FAULT_RST2, data_arr_);
+
+    // Read fault summary register
+    ReadReg(RequestType::STACK_READ, 0, RegisterAddress::FAULT_SUMMARY, 1);
 
     // stack read address 0x306 to verify addresses
     ReadReg(RequestType::BROAD_READ, 0, RegisterAddress::DIR0_ADDR, 1);
@@ -315,24 +330,39 @@ void BQ79656::AutoAddressing(byte numDevices)
 
 /**
  * @brief Starts balancing with timers set at 300 seconds and stop voltage at 4V
- * Only works with cells per segment <= 8! (due to single stack write limitations)
  *
  */
-
-void BQ79656::StartBalancingSimple()
+void BQ79656::ProcessBalancingSimple(uint32_t current_millis)
 {
-    int seriesPerSegment = kNumCellsSeries / kNumSegments;
+    data_arr_[0] = kFaultMask1 | kFaultMask1OverVoltage;
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::FAULT_MSK1, data_arr_);
+    static uint32_t last_millis = 0;
+    if (current_millis - last_millis < 300000 && last_millis != 0)  // don't restart balancing if already running
+    {
+        return;
+    }
+    last_millis = current_millis;
+
+    uint8_t seriesPerSegment = kNumCellsSeries / kNumSegments;
     // set up balancing time control registers to 300s (0x04)
-    std::vector<byte> balTimes(seriesPerSegment, 0x04);
+    std::vector<byte> balTimes(seriesPerSegment / 2, 0x04);
     Comm(RequestType::STACK_WRITE,
-         seriesPerSegment,
+         seriesPerSegment / 2,
          0,
          static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1 - seriesPerSegment),
+         balTimes);  // can only do up to 8 in one command
+    Comm(RequestType::STACK_WRITE,
+         seriesPerSegment / 2,
+         0,
+         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + (seriesPerSegment / 2) + 1
+                                      - seriesPerSegment),
          balTimes);
 
     // set balancing end voltage to 4V (max)
     data_arr_[0] = 0x3F;
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::VCB_DONE_THRESH, data_arr_);
+
+    StartOVUV();
 
     // start balancing with FLTSTOP_EN to stop on fault, OTCB_EN to pause on overtemp, AUTO_BAL to automatically cycle
     // between even/odd
@@ -345,9 +375,10 @@ void BQ79656::StartBalancingSimple()
  *
  * @param voltages A vector<float> of the entire stack's voltages
  */
-
 void BQ79656::ProcessBalancing(std::vector<float> voltages)
 {
+    data_arr_[0] = kFaultMask1 | kFaultMask1OverVoltage;
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::FAULT_MSK1, data_arr_);
     float min_voltage = *std::min_element(voltages.begin(), voltages.end());
     float max_voltage = *std::max_element(voltages.begin(), voltages.end());
     static constexpr float balancing_threshold{0.01};
@@ -398,6 +429,39 @@ void BQ79656::ProcessBalancing(std::vector<float> voltages)
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::VCB_DONE_THRESH, data_arr_);
 }
 
+/**
+ * @brief Stops balancing and re-enables OV fault detection, clearing OV faults. This function should be called when
+ * charging stops.
+ *
+ */
+void BQ79656::StopBalancing()
+{
+    uint8_t seriesPerSegment = kNumCellsSeries / kNumSegments;
+    // set up balancing time control registers to 0s (0x0)
+    std::vector<byte> balTimes(seriesPerSegment / 2, 0x04);
+    Comm(RequestType::STACK_WRITE,
+         seriesPerSegment / 2,
+         0,
+         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1 - seriesPerSegment),
+         balTimes);  // can only do up to 8 in one command
+    Comm(RequestType::STACK_WRITE,
+         seriesPerSegment / 2,
+         0,
+         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + (seriesPerSegment / 2) + 1
+                                      - seriesPerSegment),
+         balTimes);
+    data_arr_[0] = 0b00110011;  // write BAL_GO to process registers
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::BAL_CTRL2, data_arr_);
+
+    // clear OV faults
+    data_arr_[0] = 0b00001000;
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::FAULT_RST1, data_arr_);
+
+    // reset fault mask 1 to re-enable OV faults
+    data_arr_[0] = kFaultMask1;
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::FAULT_MSK1, data_arr_);
+}
+
 void BQ79656::SetAllDataArrValues(byte value)
 {
     for (int i = 0; i < data_arr_.size(); i++)
@@ -406,28 +470,11 @@ void BQ79656::SetAllDataArrValues(byte value)
     }
 }
 
-/* void BQ79656::RunBalanceRound(double* voltages) {
-  int seriesPerSegment = kNumCellsSeries / kNumSegments;
-
-
-  for (int i = 1; i <= stack_size_; i++) {
-
-  }
-} */
-
 void BQ79656::SetStackSize(int newSize) { stack_size_ = newSize; }
 
-/*uint16_t calculateCRC() {
-  return crc.Modbus(txBuf, 0, txDataLen);
-}*/
-
-bool BQ79656::verifyCRC(std::vector<uint8_t> buf) { return crc.Modbus(buf.data(), 0, bq_buffer_data_length_) == 0; }
+bool BQ79656::VerifyCRC(std::vector<uint8_t> buf) { return crc.Modbus(buf.data(), 0, bq_buffer_data_length_) == 0; }
 
 std::vector<uint8_t> BQ79656::GetBuf() { return bq_buffer_; }
-
-/* uint8_t** BQ79656::GetRespBufs() {
-  return (uint8_t**)bq_response_buffers_;
-} */
 
 int &BQ79656::GetDataLen() { return bq_buffer_data_length_; }
 
@@ -438,7 +485,9 @@ int &BQ79656::GetDataLen() { return bq_buffer_data_length_; }
  */
 void BQ79656::GetVoltages(std::vector<float> &voltages)
 {
-    // read voltages from battery
+    data_arr_[0] = 0b01000000;  // CB_PAUSE, none of the other values are read until BAL_GO is set to 1
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::BAL_CTRL2, data_arr_);
+    //  read voltages from battery
     int seriesPerSegment = kNumCellsSeries / kNumSegments;
     ReadReg(
         RequestType::BROAD_READ,
@@ -457,6 +506,9 @@ void BQ79656::GetVoltages(std::vector<float> &voltages)
             voltages[((i - 1) * seriesPerSegment) + j] = voltage * BQ_V_LSB_ADC;
         }
     }
+
+    data_arr_[0] = 0b00000000;  // CB_PAUSE=0 to resume, none of the other values are read until BAL_GO is set to 1
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::BAL_CTRL2, data_arr_);
     return;
 }
 
@@ -514,18 +566,6 @@ void BQ79656::GetCurrent(std::vector<float> &current)
 
     return;
 }
-
-// Convert a raw voltage measurement into a temperature
-/* double BQ79656::RawToTemp(int raw) {
-  double volts = raw * BQ_THERM_LSB;
-  return;
-} */
-
-// Convert a voltage measurement into a current
-/* double BQ79656::VoltageToCurrent(int raw) {
-  double volts = raw * BQ_CURR_LSB;
-  return volts / kShuntResistance;
-} */
 
 /**
  * @brief Sends a 2.5ms active-low wake ping to the BQ79656 bridge

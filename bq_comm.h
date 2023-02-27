@@ -48,7 +48,9 @@ public:
 
     void ProcessBalancing(std::vector<float> voltages);
 
-    void StartBalancingSimple();
+    void ProcessBalancingSimple(uint32_t current_millis);
+
+    void StopBalancing();
 
     void GetVoltages(std::vector<float>& voltages);
     void GetTemps(std::vector<float>& temperatures);
@@ -392,7 +394,7 @@ private:
     void DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size);
 
     // uint16_t calculateCRC();
-    bool verifyCRC(std::vector<uint8_t> buf);
+    bool VerifyCRC(std::vector<uint8_t> buf);
     void WakePing();
     void CommClear();
 
@@ -417,6 +419,10 @@ private:
     const uint16_t kNumThermistors;
     const uint16_t kNumSegments;
     const float kShuntResistance;
+
+    const uint8_t kFaultMask2{0b01000000};  // mask OTP CRC faults because we're not using OTP
+    const uint8_t kFaultMask1{0b00000000};  // no mask
+    const uint8_t kFaultMask1OverVoltage{0b00001000};
 
     std::vector<uint8_t> bq_buffer_;
     std::vector<std::vector<uint8_t>> bq_response_buffers_;
