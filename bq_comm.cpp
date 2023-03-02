@@ -4,7 +4,7 @@
 #include <cmath>
 
 #include "Crc16.h"
-#define serialdebug 1
+// #define serialdebug 1
 
 #define CONTROL1_SEND_WAKE 0b00100000
 
@@ -20,7 +20,7 @@ void BQ79656::BeginUart()
     uart_.addMemoryForRead(bq_uart_rx_buffer, 200);
     uart_.addMemoryForWrite(bq_uart_tx_buffer, 200);
     uart_.begin(BQ_UART_FREQ);  //, SERIAL_8N1_HALF_DUPLEX);  // BQ79656 uart interface is half duplex, but Teensy can't
-                                //switch from write to read fast enough
+                                // switch from write to read fast enough
 }
 
 /**
@@ -36,6 +36,7 @@ void BQ79656::Initialize()
     // send commands to start/configure stack
     // todo
     WakePing();
+    WakePing();  // two needed for some reason
 
     // AutoAddressing(num_segments);
     AutoAddressing(stack_size_);
@@ -322,10 +323,10 @@ void BQ79656::AutoAddressing(byte numDevices)
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::FAULT_RST2, data_arr_);
 
     // Read fault summary register
-    ReadReg(RequestType::STACK_READ, 0, RegisterAddress::FAULT_SUMMARY, 1);
+    // ReadReg(RequestType::STACK_READ, 0, RegisterAddress::FAULT_SUMMARY, 1);
 
     // stack read address 0x306 to verify addresses
-    ReadReg(RequestType::BROAD_READ, 0, RegisterAddress::DIR0_ADDR, 1);
+    // ReadReg(RequestType::BROAD_READ, 0, RegisterAddress::DIR0_ADDR, 1);
 }
 
 /**
