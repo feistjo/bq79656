@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "thermistor.h"
+#define BQTEST
 
 #define BQ_SPI_FREQ 6000000
 #define BQ_UART_FREQ 1000000
@@ -46,7 +47,7 @@ public:
 
     void AutoAddressing(byte numDevices);
 
-    void ProcessBalancing(std::vector<float> voltages);
+    void ProcessBalancing(std::vector<float> voltages, float max_voltage);
 
     void ProcessBalancingSimple(uint32_t current_millis);
 

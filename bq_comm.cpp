@@ -4,7 +4,7 @@
 #include <cmath>
 
 #include "Crc16.h"
-// #define serialdebug 1
+#define serialdebug 1
 
 #define CONTROL1_SEND_WAKE 0b00100000
 
@@ -38,8 +38,8 @@ void BQ79656::Initialize()
     WakePing();
     WakePing();  // two needed for some reason
 
-    // AutoAddressing(num_segments);
-    AutoAddressing(stack_size_);
+    AutoAddressing(kNumSegments);
+    // AutoAddressing(stack_size_);
 
     data_arr_[0] = 0b00001101;  // disable short comm timeout, long timeout action shutdown, long comm timeout 10 min
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_TIMEOUT_CONF, data_arr_);
@@ -375,15 +375,16 @@ void BQ79656::ProcessBalancingSimple(uint32_t current_millis)
  * @brief Runs a round of balancing on all segments in the stack
  *
  * @param voltages A vector<float> of the entire stack's voltages
+ * @param max_charge_voltage The max charge voltage to limit the cells to
  */
-void BQ79656::ProcessBalancing(std::vector<float> voltages)
+void BQ79656::ProcessBalancing(std::vector<float> voltages, float max_charge_voltage)
 {
     data_arr_[0] = kFaultMask1 | kFaultMask1OverVoltage;
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::FAULT_MSK1, data_arr_);
     float min_voltage = *std::min_element(voltages.begin(), voltages.end());
     float max_voltage = *std::max_element(voltages.begin(), voltages.end());
     static constexpr float balancing_threshold{0.01};
-    if (max_voltage - min_voltage < balancing_threshold)
+    if (max_voltage - min_voltage < balancing_threshold && max_voltage <= max_charge_voltage)
     {
         return;
     }
@@ -395,7 +396,7 @@ void BQ79656::ProcessBalancing(std::vector<float> voltages)
         std::vector<float>::iterator max_segment_voltage_iter =
             std::max_element(voltages.begin() + seriesPerSegment, voltages.begin() + (2 * seriesPerSegment));
         float max_segment_voltage = *max_segment_voltage_iter;
-        if (max_segment_voltage - min_voltage >= balancing_threshold)
+        if (max_segment_voltage - min_voltage >= balancing_threshold || max_segment_voltage > max_charge_voltage)
         {
             SetAllDataArrValues(0);
             int message = 0;  // num_messages = std::round((seriesPerSegment / 8.0f) + 0.5);
@@ -406,6 +407,7 @@ void BQ79656::ProcessBalancing(std::vector<float> voltages)
             {
                 data_arr_[8 - (cell % 8)] =
                     voltages[cell + (segment * seriesPerSegment)] - min_voltage >= balancing_threshold
+                            || voltages[cell + (segment * seriesPerSegment)] > max_charge_voltage
                         ? 0x01
                         : 0x00;  // 10s if balancing needed
 
@@ -491,20 +493,20 @@ void BQ79656::GetVoltages(std::vector<float> &voltages)
     //  read voltages from battery
     int seriesPerSegment = kNumCellsSeries / kNumSegments;
     ReadReg(
-        RequestType::BROAD_READ,
+        RequestType::STACK_READ,
         0,
         static_cast<RegisterAddress>((static_cast<uint16_t>(RegisterAddress::VCELL1_LO) + 1) - (seriesPerSegment * 2)),
         seriesPerSegment * 2);
 
     // fill in num_series voltages to array
-    for (int i = 1; i <= stack_size_; i++)
+    for (int i = 0; i < stack_size_; i++)
     {
         for (int j = 0; j < seriesPerSegment; j++)
         {
             int16_t voltage;
-            ((uint8_t *)&voltage)[1] = bq_response_buffers_[stack_size_ - i][(2 * j) + 4];
-            ((uint8_t *)&voltage)[0] = bq_response_buffers_[stack_size_ - i][(2 * j) + 5];
-            voltages[((i - 1) * seriesPerSegment) + j] = voltage * BQ_V_LSB_ADC;
+            ((uint8_t *)&voltage)[1] = bq_response_buffers_[stack_size_ - i - 1][(2 * j) + 4];
+            ((uint8_t *)&voltage)[0] = bq_response_buffers_[stack_size_ - i - 1][(2 * j) + 5];
+            voltages[(i * seriesPerSegment) + j] = voltage * BQ_V_LSB_ADC;
         }
     }
 
@@ -521,21 +523,21 @@ void BQ79656::GetVoltages(std::vector<float> &voltages)
 void BQ79656::GetTemps(std::vector<float> &temps)
 {
     // read temps from battery
-    int thermoPerSegment = kNumCellsSeries / kNumSegments;
+    int thermoPerSegment = kNumThermistors / kNumSegments;
     ReadReg(RequestType::STACK_READ,
             0,
             static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::GPIO1_HI) - 1),
             thermoPerSegment * 2);
 
     // fill in kNumThermistors temperatures to array
-    for (int i = 1; i <= stack_size_; i++)
+    for (int i = 0; i < stack_size_; i++)
     {
         for (int j = 0; j < thermoPerSegment; j++)
         {
             int16_t temp;
-            ((uint8_t *)&temp)[0] = bq_response_buffers_[i][(2 * j) + 4];
-            ((uint8_t *)&temp)[1] = bq_response_buffers_[i][(2 * j) + 5];
-            temps[((i - 1) * thermoPerSegment) + j] = thermistor_.VoltageToTemperature(temp * BQ_V_LSB_GPIO);
+            ((uint8_t *)&temp)[0] = bq_response_buffers_[stack_size_ - i - 1][(2 * j) + 4];
+            ((uint8_t *)&temp)[1] = bq_response_buffers_[stack_size_ - i - 1][(2 * j) + 5];
+            temps[(i * thermoPerSegment) + j] = thermistor_.VoltageToTemperature(temp * BQ_V_LSB_GPIO);
         }
     }
     return;
