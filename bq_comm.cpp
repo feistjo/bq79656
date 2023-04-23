@@ -19,8 +19,8 @@ void BQ79656::BeginUart()
 {
     uart_.addMemoryForRead(bq_uart_rx_buffer, 200);
     uart_.addMemoryForWrite(bq_uart_tx_buffer, 200);
-    uart_.begin(BQ_UART_FREQ);  //, SERIAL_8N1_HALF_DUPLEX);  // BQ79656 uart interface is half duplex, but Teensy can't
-                                // switch from write to read fast enough
+    uart_.begin(BQ_UART_FREQ); //, SERIAL_8N1_HALF_DUPLEX);  // BQ79656 uart interface is half duplex, but Teensy can't
+                               // switch from write to read fast enough
 }
 
 /**
@@ -36,12 +36,12 @@ void BQ79656::Initialize()
     // send commands to start/configure stack
     // todo
     WakePing();
-    WakePing();  // two needed for some reason
+    WakePing(); // two needed for some reason
 
     AutoAddressing(kNumSegments);
     // AutoAddressing(stack_size_);
 
-    data_arr_[0] = 0b00001101;  // disable short comm timeout, long timeout action shutdown, long comm timeout 10 min
+    data_arr_[0] = 0b00001101; // disable short comm timeout, long timeout action shutdown, long comm timeout 10 min
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_TIMEOUT_CONF, data_arr_);
 
     // set active cells for OV/UV
@@ -81,13 +81,13 @@ void BQ79656::Initialize()
 
 void BQ79656::StartOVUV()
 {
-    data_arr_[0] = 0b00000101;  // OVUV_GO, OVUV_MODE round robin
+    data_arr_[0] = 0b00000101; // OVUV_GO, OVUV_MODE round robin
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::OVUV_CTRL, data_arr_);
 }
 
 void BQ79656::StartOTUT()
 {
-    data_arr_[0] = 0b00000101;  // OTUT_GO, mode=round robin
+    data_arr_[0] = 0b00000101; // OTUT_GO, mode=round robin
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::OTUT_CTRL, data_arr_);
 }
 
@@ -134,12 +134,10 @@ void BQ79656::SetProtectors(float ov_thresh, float uv_thresh, float ot_thresh, f
 void BQ79656::Comm(
     RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, std::vector<byte> data)
 {
-    data_size -= 1;  // 0 means 1 byte
+    data_size -= 1; // 0 means 1 byte
     bq_buffer_[0] =
-        0b10000000 | static_cast<byte>(req_type) | (data_size & 0b00000111);  // command | req_type | data_size
-    bool isStackOrBroad = (req_type == RequestType::STACK_READ) || (req_type == RequestType::STACK_WRITE)
-                          || (req_type == RequestType::BROAD_READ) || (req_type == RequestType::BROAD_WRITE)
-                          || (req_type == RequestType::BROAD_WRITE_REV);
+        0b10000000 | static_cast<byte>(req_type) | (data_size & 0b00000111); // command | req_type | data_size
+    bool isStackOrBroad = (req_type == RequestType::STACK_READ) || (req_type == RequestType::STACK_WRITE) || (req_type == RequestType::BROAD_READ) || (req_type == RequestType::BROAD_WRITE) || (req_type == RequestType::BROAD_WRITE_REV);
     if (!isStackOrBroad)
     {
         bq_buffer_[1] = dev_addr;
@@ -151,7 +149,7 @@ void BQ79656::Comm(
         bq_buffer_[3 + i + (!isStackOrBroad)] = data[i];
     }
     uint16_t command_crc = crc.Modbus(
-        bq_buffer_.data(), 0, 4 + data_size + (!isStackOrBroad));  // calculates the CRC, but the bytes are backwards
+        bq_buffer_.data(), 0, 4 + data_size + (!isStackOrBroad)); // calculates the CRC, but the bytes are backwards
     bq_buffer_[4 + data_size + (!isStackOrBroad)] = command_crc & 0xFF;
     bq_buffer_[5 + data_size + (!isStackOrBroad)] = command_crc >> 8;
 
@@ -185,7 +183,7 @@ void BQ79656::Comm(
 void BQ79656::DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size)
 {
     // bqComm(BQ_SINGLE_WRITE, 1, 0, BRIDGE_FAULT_RST, data);
-    resp_size -= 1;  // 0 means 1 byte
+    resp_size -= 1; // 0 means 1 byte
     data_arr_[0] = resp_size;
     Comm(req_type, 1, dev_addr, reg_addr, data_arr_);
     delay(1);
@@ -235,7 +233,7 @@ std::vector<std::vector<uint8_t>> BQ79656::ReadReg(RequestType req_type,
                                                    RegisterAddress reg_addr,
                                                    byte resp_size)
 {
-    resp_size -= 1;  // 0 means 1 byte
+    resp_size -= 1; // 0 means 1 byte
     data_arr_[0] = resp_size;
     Comm(req_type, 1, dev_addr, reg_addr, data_arr_);
 
@@ -309,9 +307,9 @@ void BQ79656::AutoAddressing(byte numDevices)
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_CTRL, data_arr_);
 
     // Step 8: single device write to set base and top of stack
-    data_arr_[0] = 0x00;  // not stack device
+    data_arr_[0] = 0x00; // not stack device
     Comm(RequestType::SINGLE_WRITE, 1, 0, RegisterAddress::COMM_CTRL, data_arr_);
-    data_arr_[0] = 0x03;  // stack and top
+    data_arr_[0] = 0x03; // stack and top
     Comm(RequestType::SINGLE_WRITE, 1, numDevices, RegisterAddress::COMM_CTRL, data_arr_);
 
     // Step 9: dummy broadcast read OTP_ECC_TEST (sync up internal DLL)
@@ -338,7 +336,7 @@ void BQ79656::ProcessBalancingSimple(uint32_t current_millis)
     data_arr_[0] = kFaultMask1 | kFaultMask1OverVoltage;
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::FAULT_MSK1, data_arr_);
     static uint32_t last_millis = 0;
-    if (current_millis - last_millis < 300000 && last_millis != 0)  // don't restart balancing if already running
+    if (current_millis - last_millis < 300000 && last_millis != 0) // don't restart balancing if already running
     {
         return;
     }
@@ -351,12 +349,11 @@ void BQ79656::ProcessBalancingSimple(uint32_t current_millis)
          seriesPerSegment / 2,
          0,
          static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1 - seriesPerSegment),
-         balTimes);  // can only do up to 8 in one command
+         balTimes); // can only do up to 8 in one command
     Comm(RequestType::STACK_WRITE,
          seriesPerSegment / 2,
          0,
-         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + (seriesPerSegment / 2) + 1
-                                      - seriesPerSegment),
+         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + (seriesPerSegment / 2) + 1 - seriesPerSegment),
          balTimes);
 
     // set balancing end voltage to 4V (max)
@@ -399,27 +396,24 @@ void BQ79656::ProcessBalancing(std::vector<float> voltages, float max_charge_vol
         if (max_segment_voltage - min_voltage >= balancing_threshold || max_segment_voltage > max_charge_voltage)
         {
             SetAllDataArrValues(0);
-            int message = 0;  // num_messages = std::round((seriesPerSegment / 8.0f) + 0.5);
-            for (int cell = (max_segment_voltage_iter - (voltages.begin() + seriesPerSegment))
-                            % 2;  // 0 if even is worse, 1 if odd is worse
+            int message = 0;                                                                        // num_messages = std::round((seriesPerSegment / 8.0f) + 0.5);
+            for (int cell = (max_segment_voltage_iter - (voltages.begin() + seriesPerSegment)) % 2; // 0 if even is worse, 1 if odd is worse
                  cell < seriesPerSegment;
                  cell = cell + 2)
             {
                 data_arr_[8 - (cell % 8)] =
-                    voltages[cell + (segment * seriesPerSegment)] - min_voltage >= balancing_threshold
-                            || voltages[cell + (segment * seriesPerSegment)] > max_charge_voltage
+                    voltages[cell + (segment * seriesPerSegment)] - min_voltage >= balancing_threshold || voltages[cell + (segment * seriesPerSegment)] > max_charge_voltage
                         ? 0x01
-                        : 0x00;  // 10s if balancing needed
+                        : 0x00; // 10s if balancing needed
 
-                if (cell % 8 == 0 || cell == seriesPerSegment - 1)  // if data_arr_ full, send message
+                if (cell % 8 == 0 || cell == seriesPerSegment - 1) // if data_arr_ full, send message
                 {
                     const int cells_in_message = cell % 8 == 0 ? 8 : cell % 8;
                     Comm(RequestType::SINGLE_WRITE,
                          cells_in_message,
                          segment,
-                         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1
-                                                      - ((message * 8) + cells_in_message)),
-                         data_arr_);  // data size = cells in message,
+                         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1 - ((message * 8) + cells_in_message)),
+                         data_arr_); // data size = cells in message,
                     SetAllDataArrValues(0);
                     message++;
                 }
@@ -446,14 +440,13 @@ void BQ79656::StopBalancing()
          seriesPerSegment / 2,
          0,
          static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + 1 - seriesPerSegment),
-         balTimes);  // can only do up to 8 in one command
+         balTimes); // can only do up to 8 in one command
     Comm(RequestType::STACK_WRITE,
          seriesPerSegment / 2,
          0,
-         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + (seriesPerSegment / 2) + 1
-                                      - seriesPerSegment),
+         static_cast<RegisterAddress>(static_cast<uint16_t>(RegisterAddress::CB_CELL1_CTRL) + (seriesPerSegment / 2) + 1 - seriesPerSegment),
          balTimes);
-    data_arr_[0] = 0b00110011;  // write BAL_GO to process registers
+    data_arr_[0] = 0b00110011; // write BAL_GO to process registers
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::BAL_CTRL2, data_arr_);
 
     // clear OV faults
@@ -482,13 +475,72 @@ std::vector<uint8_t> BQ79656::GetBuf() { return bq_buffer_; }
 int &BQ79656::GetDataLen() { return bq_buffer_data_length_; }
 
 /**
+ * @brief Runs the integrated open wire check on the VC pins of the BQ79656
+ * Note: Main ADC must be running in continuous mode before this funcion is called
+ *
+ * @return true if there is an open wire fault
+ * @return false if there is no open wire fault
+ */
+bool BQ79656::RunOpenWireCheck()
+{
+    // Before starting the open wire detection, the host ensures
+    // The Main ADC is running in continuous mode
+
+    // Configure the open wire detection threshold through DIAG_COMP_CTRL2[OW_THR3:0]
+    data_arr_[0] = 0x0 | 6; // 6*300mv+500mv=2.3v threshold
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL2, data_arr_);
+
+    // To start the open wire comparison
+    // Turn on the VC pins current sink or source through DIAG_COMP_CTRL3[OW_SNK1:0]
+    data_arr_[0] = 0b00010000;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
+
+    // Wait for dV/dt time to deplete capacitors
+    delay(3); // depletes 0.47uf at 380ua minimum, 808V/s, will deplete to at most 1.776V
+
+    // For VC open wire detection, select DIAG_COMP_CTRL3[COMP_ADC_SEL2:0] = OW VC check (0b010) and set COMP_ADC_GO=1
+    data_arr_[0] = 0b00010101; // leave current sinks on
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
+
+    // Device runs comparisons
+    // Wait for comparison completed, ADC_STAT2[DRDY_VCOW]=1
+    std::array<bool, kNumSegments> complete_segments{false};
+    bool complete = false;
+    while (!complete)
+    {
+        ReadReg(RequestType::BROAD_READ, 0, RegisterAddress::ADC_STAT2, 1);
+        complete = true;
+        for (int i = 0; i < kNumSegments; i++)
+        {
+            complete_segments[i] = bq_response_buffers_[stack_size_ - i - 1][0] & 0b00001000;
+            complete &= complete_segments[i];
+        }
+    }
+
+    // Host then turns of all current sinks and sources through DIAG_COMP_CTRL3[OW_SNK1:0]
+    data_arr_[0] = 0b00000000;
+    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
+
+    // Host checks the FAULT_COMP_VCOW1/2 registers for comparison result
+    // Just check fault summary
+    // May not be needed, can return void and let nfault trigger interrupt
+    ReadReg(RequestType::BROAD_READ, 0, RegisterAddress::FAULT_SUMMARY, 1);
+    bool ow_fault = false;
+    for (int i = 0; i < kNumSegments; i++)
+    {
+        ow_fault |= bq_response_buffers_[stack_size_ - i - 1][0] & 0b01000000;
+    }
+    return ow_fault;
+}
+
+/**
  * @brief Reads the voltages from the battery. Note: ADC must be running beforehand!
  *
  * @param voltages A vector<float> to fill in with the newly read voltages
  */
 void BQ79656::GetVoltages(std::vector<float> &voltages)
 {
-    data_arr_[0] = 0b01000000;  // CB_PAUSE, none of the other values are read until BAL_GO is set to 1
+    data_arr_[0] = 0b01000000; // CB_PAUSE, none of the other values are read until BAL_GO is set to 1
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::BAL_CTRL2, data_arr_);
     //  read voltages from battery
     int seriesPerSegment = kNumCellsSeries / kNumSegments;
@@ -510,7 +562,7 @@ void BQ79656::GetVoltages(std::vector<float> &voltages)
         }
     }
 
-    data_arr_[0] = 0b00000000;  // CB_PAUSE=0 to resume, none of the other values are read until BAL_GO is set to 1
+    data_arr_[0] = 0b00000000; // CB_PAUSE=0 to resume, none of the other values are read until BAL_GO is set to 1
     Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::BAL_CTRL2, data_arr_);
     return;
 }
@@ -585,8 +637,7 @@ void BQ79656::WakePing()
     digitalWrite(tx_pin_, HIGH);
     BeginUart();
     delayMicroseconds(
-        (10000 + 600)
-        * kNumSegments);  //(10ms shutdown to active transition + 600us propogation of wake) * number_of_devices
+        (10000 + 600) * kNumSegments); //(10ms shutdown to active transition + 600us propogation of wake) * number_of_devices
 }
 
 /**
