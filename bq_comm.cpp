@@ -512,7 +512,7 @@ bool BQ79656::RunOpenWireCheck()
         complete = true;
         for (int i = 0; i < kNumSegments; i++)
         {
-            complete_segments[i] = bq_response_buffers_[stack_size_ - i - 1][0] & 0b00001000;
+            complete_segments[i] |= bq_response_buffers_[stack_size_ - i - 1][0] & 0b00001000;
             complete &= complete_segments[i];
         }
     }
