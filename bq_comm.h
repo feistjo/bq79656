@@ -10,8 +10,8 @@
 
 #define BQ_SPI_FREQ 6000000
 #define BQ_UART_FREQ 1000000
-#define BQ_THERM_LSB 0.00015259   // Vlsb_gpio = 152.59uV/lsb
-#define BQ_CURR_LSB 0.0000000149  // 14.9 nv
+#define BQ_THERM_LSB 0.00015259  // Vlsb_gpio = 152.59uV/lsb
+#define BQ_CURR_LSB 0.0000000149 // 14.9 nv
 #define BQ_V_LSB_ADC (190.73 * 0.000001)
 #define BQ_V_LSB_GPIO (152.59 * 0.000001)
 
@@ -21,9 +21,10 @@ static uint8_t bq_uart_tx_buffer[200] = {0};
 class BQ79656
 {
 public:
-    BQ79656(HardwareSerial& uart,
+    BQ79656(HardwareSerial &uart,
             uint8_t tx_pin,
-            IThermistor& thermistor,
+            IThermistor &thermistor,
+            std::function<uint32_t(void)> get_millis = NULL;
             uint16_t num_cells_series = 140,
             uint16_t num_thermistors = 112,
             uint16_t num_segments = 14,
@@ -31,13 +32,14 @@ public:
         : uart_{uart},
           tx_pin_{tx_pin},
           thermistor_{thermistor},
-          data_arr_(8, 0),
-          kNumCellsSeries{num_cells_series},
-          kNumThermistors{num_thermistors},
-          kNumSegments{num_segments},
-          kShuntResistance{shunt_resistance},
-          bq_buffer_(176, 0),
-          bq_response_buffers_(kNumSegments + 1, std::vector<uint8_t>(176, 0))
+          get_millis_{get_millis};
+    data_arr_(8, 0),
+        kNumCellsSeries{num_cells_series},
+        kNumThermistors{num_thermistors},
+        kNumSegments{num_segments},
+        kShuntResistance{shunt_resistance},
+        bq_buffer_(176, 0),
+        bq_response_buffers_(kNumSegments + 1, std::vector<uint8_t>(176, 0))
     {
     }
 
@@ -53,26 +55,26 @@ public:
 
     void StopBalancing();
 
-    void GetVoltages(std::vector<float>& voltages);
-    void GetTemps(std::vector<float>& temperatures);
-    void GetCurrent(std::vector<float>& current);
+    void GetVoltages(std::vector<float> &voltages);
+    void GetTemps(std::vector<float> &temperatures);
+    void GetCurrent(std::vector<float> &current);
 
 #ifndef BQTEST
 private:
 #endif
     enum class RequestType : byte
     {
-        SINGLE_READ = 0b00000000,      // single device read
-        SINGLE_WRITE = 0b00010000,     // single device write
-        STACK_READ = 0b00100000,       // stack read
-        STACK_WRITE = 0b00110000,      // stack write
-        BROAD_READ = 0b01000000,       // broadcast read
-        BROAD_WRITE = 0b01010000,      // broadcast write
-        BROAD_WRITE_REV = 0b01100000,  // broadcast write reverse
+        SINGLE_READ = 0b00000000,     // single device read
+        SINGLE_WRITE = 0b00010000,    // single device write
+        STACK_READ = 0b00100000,      // stack read
+        STACK_WRITE = 0b00110000,     // stack write
+        BROAD_READ = 0b01000000,      // broadcast read
+        BROAD_WRITE = 0b01010000,     // broadcast write
+        BROAD_WRITE_REV = 0b01100000, // broadcast write reverse
     };
 
     enum class
-        RegisterAddress : uint16_t  // https://docs.google.com/spreadsheets/d/1GyFOFbGB9zVR0eIfJ3rLILp069PXWmpAPe-eZRBfAMY/edit#gid=0
+        RegisterAddress : uint16_t // https://docs.google.com/spreadsheets/d/1GyFOFbGB9zVR0eIfJ3rLILp069PXWmpAPe-eZRBfAMY/edit#gid=0
     {
         DIR0_ADDR_OTP = 0x0,
         DIR1_ADDR_OTP = 0x1,
@@ -385,13 +387,14 @@ private:
     };
 
     std::vector<uint8_t> GetBuf();
-    int& GetDataLen();
+    int &GetDataLen();
 
     void Comm(RequestType req_type, byte data_size, byte dev_addr, RegisterAddress reg_addr, std::vector<byte> data);
-    std::vector<std::vector<uint8_t>> ReadReg(RequestType req_type,
-                                              byte dev_addr,
-                                              RegisterAddress reg_addr,
-                                              byte resp_size);
+    bool ReadReg(RequestType req_type,
+                 byte dev_addr,
+                 RegisterAddress reg_addr,
+                 byte resp_size,
+                 uint32_t timeout = 100);
     void DummyReadReg(RequestType req_type, byte dev_addr, RegisterAddress reg_addr, byte resp_size);
 
     // uint16_t calculateCRC();
@@ -412,17 +415,18 @@ private:
 #ifdef BQTEST
 private:
 #endif
-    HardwareSerial& uart_;
+    HardwareSerial &uart_;
     uint8_t tx_pin_;
-    IThermistor& thermistor_;
+    IThermistor &thermistor_;
+    std::function<uint32_t(void)> get_millis_;
     std::vector<byte> data_arr_;
     const uint16_t kNumCellsSeries;
     const uint16_t kNumThermistors;
     const uint16_t kNumSegments;
     const float kShuntResistance;
 
-    const uint8_t kFaultMask2{0b01000000};  // mask OTP CRC faults because we're not using OTP
-    const uint8_t kFaultMask1{0b00000000};  // no mask
+    const uint8_t kFaultMask2{0b01000000}; // mask OTP CRC faults because we're not using OTP
+    const uint8_t kFaultMask1{0b00000000}; // no mask
     const uint8_t kFaultMask1OverVoltage{0b00001000};
 
     std::vector<uint8_t> bq_buffer_;
