@@ -495,19 +495,19 @@ bool BQ79656::RunOpenWireCheck()
 
     // Configure the open wire detection threshold through DIAG_COMP_CTRL2[OW_THR3:0]
     data_arr_[0] = 0x0 | 6;  // 6*300mv+500mv=2.3v threshold
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL2, data_arr_);
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL2, data_arr_);
 
     // To start the open wire comparison
     // Turn on the VC pins current sink or source through DIAG_COMP_CTRL3[OW_SNK1:0]
     data_arr_[0] = 0b00010000;
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
 
     // Wait for dV/dt time to deplete capacitors
     delay(3);  // depletes 0.47uf at 380ua minimum, 808V/s, will deplete to at most 1.776V
 
     // For VC open wire detection, select DIAG_COMP_CTRL3[COMP_ADC_SEL2:0] = OW VC check (0b010) and set COMP_ADC_GO=1
     data_arr_[0] = 0b00010101;  // leave current sinks on
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
 
     // Device runs comparisons
     // Wait for comparison completed, ADC_STAT2[DRDY_VCOW]=1
@@ -515,7 +515,7 @@ bool BQ79656::RunOpenWireCheck()
     bool complete = false;
     while (!complete)
     {
-        ReadReg(RequestType::BROAD_READ, 0, RegisterAddress::ADC_STAT2, 1);
+        ReadReg(RequestType::STACK_READ, 0, RegisterAddress::ADC_STAT2, 1);
         complete = true;
         for (int i = 0; i < kNumSegments; i++)
         {
@@ -526,12 +526,12 @@ bool BQ79656::RunOpenWireCheck()
 
     // Host then turns of all current sinks and sources through DIAG_COMP_CTRL3[OW_SNK1:0]
     data_arr_[0] = 0b00000000;
-    Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
 
     // Host checks the FAULT_COMP_VCOW1/2 registers for comparison result
     // Just check fault summary
     // May not be needed, can return void and let nfault trigger interrupt
-    ReadReg(RequestType::BROAD_READ, 0, RegisterAddress::FAULT_SUMMARY, 1);
+    ReadReg(RequestType::STACK_READ, 0, RegisterAddress::FAULT_SUMMARY, 1);
     bool ow_fault = false;
     for (int i = 0; i < kNumSegments; i++)
     {
