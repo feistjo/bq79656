@@ -41,7 +41,7 @@ void BQ79656::Initialize()
     AutoAddressing(kNumSegments);
     // AutoAddressing(stack_size_);
 
-    data_arr_[0] = 0b00001101;  // disable short comm timeout, long timeout action shutdown, long comm timeout 10 min
+    data_arr_[0] = 0b00001010;  // disable short comm timeout, long timeout action shutdown, long comm timeout 2s
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_TIMEOUT_CONF, data_arr_);
 
     // set active cells for OV/UV
