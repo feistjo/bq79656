@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "thermistor.h"
-#define BQTEST
+//#define BQTEST
 
 #define BQ_SPI_FREQ 6000000
 #define BQ_UART_FREQ 1000000

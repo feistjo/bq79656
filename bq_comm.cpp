@@ -4,9 +4,7 @@
 #include <cmath>
 
 #include "Crc16.h"
-#define serialdebug 1
-
-#define CONTROL1_SEND_WAKE 0b00100000
+// #define serialdebug 1
 
 Crc16 crc;
 
