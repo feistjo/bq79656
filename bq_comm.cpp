@@ -15,8 +15,8 @@ Crc16 crc;
 
 void BQ79656::BeginUart()
 {
-    uart_.addMemoryForRead(bq_uart_rx_buffer, 200);
-    uart_.addMemoryForWrite(bq_uart_tx_buffer, 200);
+    uart_.addMemoryForRead(bq_uart_rx_buffer, kAdditionalBufferSize);
+    uart_.addMemoryForWrite(bq_uart_tx_buffer, kAdditionalBufferSize);
     uart_.begin(BQ_UART_FREQ);  //, SERIAL_8N1_HALF_DUPLEX);  // BQ79656 uart interface is half duplex, but Teensy can't
                                 // switch from write to read fast enough
 }

@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "thermistor.h"
-//#define BQTEST
+// #define BQTEST
 
 #define BQ_SPI_FREQ 6000000
 #define BQ_UART_FREQ 1000000
@@ -15,8 +15,9 @@
 #define BQ_V_LSB_ADC (190.73 * 0.000001)
 #define BQ_V_LSB_GPIO (152.59 * 0.000001)
 
-static uint8_t bq_uart_rx_buffer[200] = {0};
-static uint8_t bq_uart_tx_buffer[200] = {0};
+static const uint16_t kAdditionalBufferSize{500};
+static uint8_t bq_uart_rx_buffer[kAdditionalBufferSize] = {0};
+static uint8_t bq_uart_tx_buffer[kAdditionalBufferSize] = {0};
 
 class BQ79656
 {
