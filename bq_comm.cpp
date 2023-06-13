@@ -39,7 +39,7 @@ void BQ79656::Initialize()
     AutoAddressing(kNumSegments);
     // AutoAddressing(stack_size_);
 
-    data_arr_[0] = 0b00001101;  // disable short comm timeout, long timeout action shutdown, long comm timeout 10 min
+    data_arr_[0] = 0b00001010;  // disable short comm timeout, long timeout action shutdown, long comm timeout 2s
     Comm(RequestType::BROAD_WRITE, 1, 0, RegisterAddress::COMM_TIMEOUT_CONF, data_arr_);
 
     // set active cells for OV/UV
@@ -478,6 +478,65 @@ bool BQ79656::VerifyCRC(std::vector<uint8_t> buf) { return crc.Modbus(buf.data()
 std::vector<uint8_t> BQ79656::GetBuf() { return bq_buffer_; }
 
 int &BQ79656::GetDataLen() { return bq_buffer_data_length_; }
+
+/**
+ * @brief Runs the integrated open wire check on the VC pins of the BQ79656
+ * Note: Main ADC must be running in continuous mode before this funcion is called
+ *
+ * @return true if there is an open wire fault
+ * @return false if there is no open wire fault
+ */
+bool BQ79656::RunOpenWireCheck()
+{
+    // Before starting the open wire detection, the host ensures
+    // The Main ADC is running in continuous mode
+
+    // Configure the open wire detection threshold through DIAG_COMP_CTRL2[OW_THR3:0]
+    data_arr_[0] = 0x0 | 6;  // 6*300mv+500mv=2.3v threshold
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL2, data_arr_);
+
+    // To start the open wire comparison
+    // Turn on the VC pins current sink or source through DIAG_COMP_CTRL3[OW_SNK1:0]
+    data_arr_[0] = 0b00010000;
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
+
+    // Wait for dV/dt time to deplete capacitors
+    delay(3);  // depletes 0.47uf at 380ua minimum, 808V/s, will deplete to at most 1.776V
+
+    // For VC open wire detection, select DIAG_COMP_CTRL3[COMP_ADC_SEL2:0] = OW VC check (0b010) and set COMP_ADC_GO=1
+    data_arr_[0] = 0b00010101;  // leave current sinks on
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
+
+    // Device runs comparisons
+    // Wait for comparison completed, ADC_STAT2[DRDY_VCOW]=1
+    std::vector<bool> complete_segments(kNumSegments, false);
+    bool complete = false;
+    while (!complete)
+    {
+        ReadReg(RequestType::STACK_READ, 0, RegisterAddress::ADC_STAT2, 1);
+        complete = true;
+        for (int i = 0; i < kNumSegments; i++)
+        {
+            complete_segments[i] = complete_segments[i] | (bq_response_buffers_[stack_size_ - i - 1][0] & 0b00001000);
+            complete &= complete_segments[i];
+        }
+    }
+
+    // Host then turns of all current sinks and sources through DIAG_COMP_CTRL3[OW_SNK1:0]
+    data_arr_[0] = 0b00000000;
+    Comm(RequestType::STACK_WRITE, 1, 0, RegisterAddress::DIAG_COMP_CTRL3, data_arr_);
+
+    // Host checks the FAULT_COMP_VCOW1/2 registers for comparison result
+    // Just check fault summary
+    // May not be needed, can return void and let nfault trigger interrupt
+    ReadReg(RequestType::STACK_READ, 0, RegisterAddress::FAULT_SUMMARY, 1);
+    bool ow_fault = false;
+    for (int i = 0; i < kNumSegments; i++)
+    {
+        ow_fault |= bq_response_buffers_[stack_size_ - i - 1][0] & 0b01000000;
+    }
+    return ow_fault;
+}
 
 /**
  * @brief Reads the voltages from the battery. Note: ADC must be running beforehand!
